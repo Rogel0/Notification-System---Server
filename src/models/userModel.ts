@@ -4,11 +4,13 @@ import { User } from "../types/user";
 export async function createUser(
   email: string,
   password: string,
+  name?: string | null,
+  phone?: string | null,
 ): Promise<void> {
-  await pool.query("INSERT INTO users (email, password) VALUES ($1, $2)", [
-    email,
-    password,
-  ]);
+  await pool.query(
+    "INSERT INTO users (email, password, name, phone) VALUES ($1, $2, $3, $4)",
+    [email, password, name || null, phone || null],
+  );
 }
 
 export async function findUserByEmail(email: string): Promise<User | null> {

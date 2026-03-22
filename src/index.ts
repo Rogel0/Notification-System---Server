@@ -1,15 +1,83 @@
 import express from "express";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
+import cors from "cors";
 import authRoutes from "./routes/authRoutes";
+import eventRoutes from "./routes/eventRoutes";
+import { authMiddleware } from "./db/middleware/authMiddleware";
+import pool from "./db";
 
 dotenv.config();
 
 const app = express();
+const allowedOrigins = ["http://localhost:5173"];
+
+// Configure CORS with credentials and explicit allowed methods/headers.
+const corsOptions = {
+  origin: function (origin: any, callback: any) {
+    // Allow requests with no origin (like mobile apps or curl)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      return callback(null, true);
+    }
+    return callback(new Error("CORS origin not allowed"), false);
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-Requested-With",
+    "Accept",
+    "Origin",
+  ],
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsOptions));
+
+// Robust preflight responder to avoid any explicit wildcard `app.options` problems
+// Returns required CORS headers for OPTIONS requests early in the pipeline.
+app.use((req, res, next) => {
+  if (req.method === "OPTIONS") {
+    const origin = req.headers.origin as string | undefined;
+    if (origin && allowedOrigins.includes(origin)) {
+      res.header("Access-Control-Allow-Origin", origin);
+    } else {
+      res.header("Access-Control-Allow-Origin", allowedOrigins[0]);
+    }
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+    res.header(
+      "Access-Control-Allow-Headers",
+      "Content-Type,Authorization,X-Requested-With,Accept,Origin",
+    );
+    return res.sendStatus(204);
+  }
+  next();
+});
+
 app.use(express.json());
 app.use(cookieParser());
 
-app.use("/api", authRoutes);
+// NB: avoid registering wildcard `app.options("*")` which can trigger
+// path-to-regexp PathError in some environments. The preflight responder
+// above covers OPTIONS requests.
 
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+import adminRoutes from "./routes/adminRoutes";
+import { startScheduler } from "./utils/scheduler";
+
+app.use("/api", authRoutes);
+app.use("/api/events", authMiddleware, eventRoutes);
+app.use("/api/admin", authMiddleware, adminRoutes);
+
+// Start server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  // eslint-disable-next-line no-console
+  console.log(`Server running on port ${PORT}`);
+
+  // start background schedule checker
+  startScheduler();
+});
