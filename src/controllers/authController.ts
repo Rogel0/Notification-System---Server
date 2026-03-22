@@ -25,12 +25,17 @@ export async function login(req: Request, res: Response) {
     return res.status(401).json({ message: "Invalid credentials" });
   }
   const token = generateToken(user.id);
+  const isProduction = process.env.NODE_ENV === "production";
   res.cookie("token", token, {
     httpOnly: true,
-    secure: false,
-    sameSite: "lax",
+    secure: isProduction,
+    sameSite: "none",
     maxAge: 86400000,
     path: "/",
+    // To support cross-origin browser access in production:
+    // - SameSite=None
+    // - Secure=true
+    // - withCredentials on client side
   });
   res.json({ message: "Logged in" });
 }
@@ -48,7 +53,11 @@ export async function profile(req: Request, res: Response) {
 }
 
 export async function logout(req: Request, res: Response) {
-  // Clear the auth cookie
-  res.clearCookie("token", { path: "/" });
+  // Clear the auth cookie with matching attributes for robust invalidation.
+  res.clearCookie("token", {
+    path: "/",
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "none",
+  });
   res.json({ message: "Logged out" });
 }
