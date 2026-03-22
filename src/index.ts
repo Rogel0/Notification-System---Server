@@ -10,6 +10,7 @@ import pool from "./db";
 dotenv.config();
 
 const app = express();
+app.set("trust proxy", 1); // needed for req.secure behind proxies (Railway/Vercel/etc.)
 const frontendUrlEnv = process.env.FRONTEND_URL || "http://localhost:5173";
 const allowedOrigins = frontendUrlEnv
   .split(",")

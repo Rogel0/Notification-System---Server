@@ -25,17 +25,22 @@ export async function login(req: Request, res: Response) {
     return res.status(401).json({ message: "Invalid credentials" });
   }
   const token = generateToken(user.id);
-  const isProduction = process.env.NODE_ENV === "production";
+
+  const isHTTPS =
+    req.secure ||
+    req.headers["x-forwarded-proto"] === "https" ||
+    process.env.NODE_ENV === "production";
+
   res.cookie("token", token, {
     httpOnly: true,
-    secure: isProduction,
+    secure: isHTTPS,
     sameSite: "none",
     maxAge: 86400000,
     path: "/",
     // To support cross-origin browser access in production:
     // - SameSite=None
-    // - Secure=true
-    // - withCredentials on client side
+    // - Secure=true if HTTPS
+    // - withCredentials true on client side
   });
   res.json({ message: "Logged in" });
 }
