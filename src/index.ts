@@ -10,14 +10,15 @@ import pool from "./db";
 dotenv.config();
 
 const app = express();
-const allowedOrigins = ["http://localhost:5173"];
+const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+const allowedOrigins = [frontendUrl];
 
 // Configure CORS with credentials and explicit allowed methods/headers.
 const corsOptions = {
   origin: function (origin: any, callback: any) {
     // Allow requests with no origin (like mobile apps or curl)
     if (!origin) return callback(null, true);
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
     return callback(new Error("CORS origin not allowed"), false);
