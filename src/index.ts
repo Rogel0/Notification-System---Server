@@ -10,14 +10,23 @@ import pool from "./db";
 dotenv.config();
 
 const app = express();
-const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
-const allowedOrigins = [frontendUrl];
+const frontendUrlEnv = process.env.FRONTEND_URL || "http://localhost:5173";
+const allowedOrigins = frontendUrlEnv
+  .split(",")
+  .map((u) => u.trim())
+  .filter(Boolean);
+if (allowedOrigins.length === 0) {
+  allowedOrigins.push("http://localhost:5173");
+}
+const isProduction = process.env.NODE_ENV === "production";
 
 // Configure CORS with credentials and explicit allowed methods/headers.
 const corsOptions = {
   origin: function (origin: any, callback: any) {
     // Allow requests with no origin (like mobile apps or curl)
     if (!origin) return callback(null, true);
+    // In non-production, allow any origin to ease diagnostics and local/emulator usage.
+    if (!isProduction) return callback(null, true);
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
@@ -43,18 +52,17 @@ app.use(cors(corsOptions));
 app.use((req, res, next) => {
   if (req.method === "OPTIONS") {
     const origin = req.headers.origin as string | undefined;
-    if (origin && allowedOrigins.includes(origin)) {
-      res.header("Access-Control-Allow-Origin", origin);
-    } else {
-      res.header("Access-Control-Allow-Origin", allowedOrigins[0]);
+    if (!origin || !isProduction || allowedOrigins.includes(origin)) {
+      res.header("Access-Control-Allow-Origin", origin || "*");
+      res.header("Access-Control-Allow-Credentials", "true");
+      res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+      res.header(
+        "Access-Control-Allow-Headers",
+        "Content-Type,Authorization,X-Requested-With,Accept,Origin",
+      );
+      return res.sendStatus(204);
     }
-    res.header("Access-Control-Allow-Credentials", "true");
-    res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-    res.header(
-      "Access-Control-Allow-Headers",
-      "Content-Type,Authorization,X-Requested-With,Accept,Origin",
-    );
-    return res.sendStatus(204);
+    return res.status(403).send("CORS origin not allowed");
   }
   next();
 });
