@@ -37,7 +37,7 @@ export async function login(req: Request, res: Response) {
       sameSite: cookieSameSite,
       maxAge: 86400000,
       path: "/",
-      // Local: SameSite=Lax, secure=false. 
+      // Local: SameSite=Lax, secure=false.
       // Prod: SameSite=None, secure=true.
     });
     res.json({ message: "Logged in" });
