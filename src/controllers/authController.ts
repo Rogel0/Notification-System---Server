@@ -19,30 +19,36 @@ export async function register(req: Request, res: Response) {
 }
 
 export async function login(req: Request, res: Response) {
-  const { email, password } = req.body;
-  const user = await findUserByEmail(email);
-  if (!user || !(await bcrypt.compare(password, user.password))) {
-    return res.status(401).json({ message: "Invalid credentials" });
+  try {
+    const { email, password } = req.body;
+    const user = await findUserByEmail(email);
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
+    const token = generateToken(user.id);
+
+    const isProduction = process.env.NODE_ENV === "production";
+    const cookieSecure = isProduction;
+    const cookieSameSite = isProduction ? "none" : "lax";
+
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: cookieSecure,
+      sameSite: cookieSameSite,
+      maxAge: 86400000,
+      path: "/",
+      // Local: SameSite=Lax, secure=false. 
+      // Prod: SameSite=None, secure=true.
+    });
+    res.json({ message: "Logged in" });
+  } catch (err: unknown) {
+    // Log full error for deployed logs (Railway/Heroku/Vercel)
+    // so you can inspect stack traces from the platform logging UI.
+    // Return a simple message to the client to avoid leaking internals.
+    // eslint-disable-next-line no-console
+    console.error("Login error:", err);
+    res.status(500).json({ message: "Internal Server Error" });
   }
-  const token = generateToken(user.id);
-
-  const isHTTPS =
-    req.secure ||
-    req.headers["x-forwarded-proto"] === "https" ||
-    process.env.NODE_ENV === "production";
-
-  res.cookie("token", token, {
-    httpOnly: true,
-    secure: isHTTPS,
-    sameSite: "none",
-    maxAge: 86400000,
-    path: "/",
-    // To support cross-origin browser access in production:
-    // - SameSite=None
-    // - Secure=true if HTTPS
-    // - withCredentials true on client side
-  });
-  res.json({ message: "Logged in" });
 }
 
 export async function profile(req: Request, res: Response) {
@@ -58,11 +64,11 @@ export async function profile(req: Request, res: Response) {
 }
 
 export async function logout(req: Request, res: Response) {
-  // Clear the auth cookie with matching attributes for robust invalidation.
+  const isProduction = process.env.NODE_ENV === "production";
   res.clearCookie("token", {
     path: "/",
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "none",
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
   });
   res.json({ message: "Logged out" });
 }

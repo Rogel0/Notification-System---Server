@@ -71,6 +71,16 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use(cookieParser());
 
+// Dev-only cookie debug logger — prints incoming cookies for each request.
+// Remove or disable in production.
+if (process.env.NODE_ENV !== "production") {
+  app.use((req, _res, next) => {
+    // eslint-disable-next-line no-console
+    console.log("[dev] incoming cookies:", req.cookies);
+    next();
+  });
+}
+
 // NB: avoid registering wildcard `app.options("*")` which can trigger
 // path-to-regexp PathError in some environments. The preflight responder
 // above covers OPTIONS requests.
