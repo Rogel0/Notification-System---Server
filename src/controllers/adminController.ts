@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import { buildEventEmailHtml } from "../utils/notification";
+import notification, { buildEventEmailHtml } from "../utils/notification";
 import { findUserById } from "../models/userModel";
 import { getEventByIdAdmin } from "../models/eventModel";
 import {
