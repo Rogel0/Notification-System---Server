@@ -58,9 +58,11 @@ export async function createOrUpdateJobsForEvent(
     await client.query("BEGIN");
     for (const win of scheduleWindows) {
       const runAtMillis = eventMillis - win.offsetMillis;
-      // Skip scheduling jobs that are already stale (older than tolerance)
-      if (runAtMillis < now.getTime() - pastToleranceMs) {
-        // Ensure if a job exists for this stage, we don't resurrect it unintentionally.
+      // If the run time is already in the past (<= now) do not schedule this stage.
+      // This enforces the requirement to only schedule the specified windows
+      // when they are strictly in the future.
+      if (runAtMillis <= now.getTime()) {
+        // Remove any existing pending job for this stage to avoid accidental execution.
         await client.query(
           `DELETE FROM notification_jobs WHERE event_id = $1 AND stage = $2 AND status = 'pending'`,
           [event.id, win.stage],
