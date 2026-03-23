@@ -134,21 +134,43 @@ export function getReminderMessage(
     );
   }
 
-  const timeLeft = getHoursLeft(eventDate, new Date());
+  // For scheduled stages, prefer showing the nominal stage label (no fractional hours)
+  const stageLabels: Record<string, string> = {
+    "3_days_before": "3 days",
+    "24_hours_before": "24 hours",
+    "3_hours_before": "3 hours",
+    "15_minutes_before": "15 minutes",
+    "exact": "now",
+  };
 
-  // Use precise wording per project requirements
+  // Special-case 'exact' to be user-friendly
+  if (stage === "exact") {
+    if (event.type === "Deadline") {
+      const base = `Reminder: Your deadline is happening now (${dateLabel}).`;
+      return createBody("Reminder:", base);
+    }
+    if (event.type === "Meeting") {
+      const base = `Reminder: Your meeting is happening now (${dateLabel}).`;
+      return createBody("Reminder:", base);
+    }
+    const baseTrip = `Reminder: Your business trip is happening now (${dateLabel}).`;
+    return createBody("Reminder:", baseTrip);
+  }
+
+  const nominal = stageLabels[stage] || getHoursLeft(eventDate, new Date());
+
   if (event.type === "Deadline") {
-    const base = `Reminder: You have a deadline on ${dateLabel}. You have ${timeLeft} left before the deadline.`;
+    const base = `Reminder: You have a deadline on ${dateLabel}. You have ${nominal} left before the deadline.`;
     return createBody("Reminder:", base);
   }
 
   if (event.type === "Meeting") {
-    const base = `Reminder: You have a meeting on ${dateLabel}. You have ${timeLeft} left before the meeting.`;
+    const base = `Reminder: You have a meeting on ${dateLabel}. You have ${nominal} left before the meeting.`;
     return createBody("Reminder:", base);
   }
 
   // Business Trip
-  const base = `Reminder: You have a business trip on ${dateLabel}. You have ${timeLeft} left before the trip.`;
+  const base = `Reminder: You have a business trip on ${dateLabel}. You have ${nominal} left before the trip.`;
   return createBody("Reminder:", base);
 }
 
