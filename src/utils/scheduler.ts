@@ -184,18 +184,21 @@ function getDueSteps(event: Event, now: Date) {
   const eventMillis = eventDate.getTime();
 
   if (eventMillis > nowMillis) {
-    // If the event is still in the future, include any schedule windows
-    // whose trigger time has already passed but haven't been notified yet.
-    // This makes the scheduler resilient to restarts or brief downtime
-    // so users still receive reminders like the 24-hour notice.
-    const due: string[] = [];
+    // If the event is still in the future, pick the single most-recent
+    // schedule window whose trigger time has already passed. This avoids
+    // sending an older "3 days" reminder when the correct nearest stage
+    // is "24 hours".
+    const passed: { stage: string; trigger: number }[] = [];
     for (const win of scheduleWindows) {
       const trigger = eventMillis - win.offsetMillis;
       if (nowMillis >= trigger && trigger < eventMillis) {
-        due.push(win.stage);
+        passed.push({ stage: win.stage, trigger });
       }
     }
-    return due;
+    if (passed.length === 0) return [];
+    // choose the one with the greatest trigger (closest to now)
+    passed.sort((a, b) => b.trigger - a.trigger);
+    return [passed[0].stage];
   } else {
     for (const win of missedWindows) {
       const trigger = eventMillis + win.offsetMillis;
@@ -312,8 +315,24 @@ export async function runScheduler(): Promise<void> {
 
 export async function processDueJobs(now: Date): Promise<void> {
   try {
-    const jobs = await getDueJobs(200);
+    const jobs = await getDueJobs(500);
+
+    // Group jobs by event_id and keep only the job with the latest run_at per event.
+    const latestJobByEvent = new Map<number, any>();
     for (const job of jobs) {
+      const existing = latestJobByEvent.get(job.event_id);
+      if (!existing) {
+        latestJobByEvent.set(job.event_id, job);
+        continue;
+      }
+      const existingTime = new Date(existing.run_at).getTime();
+      const thisTime = new Date(job.run_at).getTime();
+      if (thisTime > existingTime) {
+        latestJobByEvent.set(job.event_id, job);
+      }
+    }
+
+    for (const job of Array.from(latestJobByEvent.values())) {
       try {
         const event = await getEventByIdAdmin(job.event_id);
         if (!event) {
