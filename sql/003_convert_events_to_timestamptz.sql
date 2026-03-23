@@ -9,8 +9,12 @@ ALTER TABLE events ADD COLUMN datetime_tz timestamptz;
 
 -- Populate datetime_tz by treating the existing datetime values as Asia/Manila local time
 -- and converting them to proper timestamptz instants.
+-- Use Postgres timezone conversion rather than string concatenation.
+-- For a `timestamp without time zone` value, `ts AT TIME ZONE 'Asia/Manila'`
+-- interprets `ts` as a local time in that zone and returns the corresponding
+-- `timestamptz` (UTC instant). This is robust and avoids parsing errors.
 UPDATE events
-SET datetime_tz = (datetime::text || ' Asia/Manila')::timestamptz
+SET datetime_tz = (datetime AT TIME ZONE 'Asia/Manila')
 WHERE datetime IS NOT NULL;
 
 -- You may want to inspect results now before proceeding. If satisfied, continue.

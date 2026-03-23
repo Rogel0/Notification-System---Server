@@ -46,11 +46,12 @@ export async function addEvent(req: Request, res: Response) {
       .json({ message: "Type, title, and datetime are required" });
   }
 
-  // Normalize and validate incoming datetime. Convert to an explicit UTC ISO
+  // Normalize and validate incoming datetime. Treat datetime values coming
+  // from the client (often `datetime-local` strings without a timezone)
+  // as Asia/Manila local times and convert them to an explicit UTC ISO
   // string so the DB stores a timezone-aware value and both server/client
   // interpret it consistently.
-  const parsed = new Date(datetime);
-  const eventDate = parsed;
+  const eventDate = parseStoredDate(datetime);
   if (Number.isNaN(eventDate.getTime()) || eventDate < new Date()) {
     return res
       .status(400)
