@@ -1,66 +1,10 @@
 import { Request, Response } from "express";
-import notification, { buildEventEmailHtml } from "../utils/notification";
+import { buildEventEmailHtml } from "../utils/notification";
 import { findUserById } from "../models/userModel";
-import { getEventByIdAdmin, createEvent } from "../models/eventModel";
-import { processEvent, runScheduler } from "../utils/scheduler";
-import { getReminderMessage } from "../utils/scheduler";
+import { getEventByIdAdmin } from "../models/eventModel";
+import { processEvent, runScheduler, getReminderMessage } from "../utils/scheduler";
 
-export async function notifyTest(req: Request, res: Response) {
-  // Accept overrides in body for quick testing
-  const { toEmail, toPhone, subject, text } = req.body || {};
-
-  const userId = (req as any).userId as number | undefined;
-  let user: any = null;
-  if (userId) {
-    try {
-      user = await findUserById(userId);
-    } catch (err) {
-      // ignore
-    }
-  }
-
-  const targetEmail = toEmail || (user && user.email) || null;
-  const targetPhone = toPhone || (user && (user as any).phone) || null;
-
-  if (!targetEmail && !targetPhone) {
-    return res
-      .status(400)
-      .json({ message: "No target email or phone available for test" });
-  }
-
-  const msgSubject = subject || "Notification test from NotificationSystem";
-  const msgText = text || "This is a test notification from your app.";
-
-  const results: any = {};
-  const cfg = notification.checkNotificationConfig();
-  if (targetEmail) {
-    try {
-      if (!cfg.sendgrid) {
-        results.email = { skipped: "sendgrid-not-configured" };
-      } else {
-        await notification.sendEmail(targetEmail, msgSubject, msgText);
-        results.email = "sent-or-queued";
-      }
-    } catch (err: any) {
-      results.email = { error: err.message || err };
-    }
-  }
-
-  if (targetPhone) {
-    try {
-      if (!cfg.twilio) {
-        results.sms = { skipped: "twilio-not-configured" };
-      } else {
-        await notification.sendSms(targetPhone, msgText);
-        results.sms = "sent-or-queued";
-      }
-    } catch (err: any) {
-      results.sms = { error: err.message || err };
-    }
-  }
-
-  res.json({ ok: true, results });
-}
+// Test notification endpoint removed to avoid accidental/mock sends.
 
 export function getNotificationConfig(req: Request, res: Response) {
   const cfg = notification.checkNotificationConfig();
@@ -129,70 +73,7 @@ export async function previewEvent(req: Request, res: Response) {
   }
 }
 
-export async function seedMockEvents(req: Request, res: Response) {
-  const userId = (req as any).userId as number | undefined;
-  if (!userId) return res.status(400).json({ message: "No user in request" });
-
-  const now = new Date();
-  const makeISO = (d: Date) => d.toISOString();
-
-  const eventsToCreate = [
-    {
-      type: "Deadline",
-      title: "Mock Deadline 3 days",
-      dt: new Date(now.getTime() + 1000 * 60 * 60 * 24 * 3),
-    },
-    {
-      type: "Meeting",
-      title: "Mock Meeting 24 hours",
-      dt: new Date(now.getTime() + 1000 * 60 * 60 * 24),
-    },
-    {
-      type: "Business Trip",
-      title: "Mock Trip 3 hours",
-      dt: new Date(now.getTime() + 1000 * 60 * 60 * 3),
-    },
-    {
-      type: "Meeting",
-      title: "Mock Meeting 15 minutes",
-      dt: new Date(now.getTime() + 1000 * 60 * 15),
-    },
-    { type: "Deadline", title: "Mock Exact Now", dt: new Date(now.getTime()) },
-    // missed events
-    {
-      type: "Meeting",
-      title: "Missed 10 minutes ago",
-      dt: new Date(now.getTime() - 1000 * 60 * 10),
-    },
-    {
-      type: "Deadline",
-      title: "Missed 1 hour ago",
-      dt: new Date(now.getTime() - 1000 * 60 * 60),
-    },
-    {
-      type: "Business Trip",
-      title: "Missed 24 hours ago",
-      dt: new Date(now.getTime() - 1000 * 60 * 60 * 24),
-    },
-  ];
-
-  const created: any[] = [];
-  for (const e of eventsToCreate) {
-    // details to make visible
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const details = `Auto-generated mock event: ${e.title}`;
-    const ev = await createEvent(
-      userId,
-      e.type,
-      e.title,
-      makeISO(e.dt),
-      details,
-    );
-    created.push(ev);
-  }
-
-  res.json({ ok: true, created });
-}
+// Seed mock events endpoint removed.
 
 export async function triggerSchedulerNow(req: Request, res: Response) {
   try {

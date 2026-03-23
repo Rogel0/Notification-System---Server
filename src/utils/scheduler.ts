@@ -3,9 +3,15 @@ import {
   getAllPendingEvents,
   markEventStagesNotified,
   updateEventStatus,
+  getEventByIdAdmin,
 } from "../models/eventModel";
 import { findUserById } from "../models/userModel";
 import notification, { buildEventEmailHtml } from "./notification";
+import {
+  getDueJobs,
+  markJobAttempt,
+  createOrUpdateJobsForEvent,
+} from "../models/notificationJobModel";
 
 const scheduleWindows = [
   { stage: "3_days_before", offsetMillis: 1000 * 60 * 60 * 24 * 3 },
@@ -259,16 +265,120 @@ export async function processEvent(event: Event, now: Date) {
 export async function runScheduler(): Promise<void> {
   const now = new Date();
   try {
-    const events = await getAllPendingEvents();
+    // Process any due notification jobs from the DB first
+    await processDueJobs(now);
 
+    // Fallback: run the existing event-based checks as a safety net
+    const events = await getAllPendingEvents();
     await Promise.all(events.map((event) => processEvent(event, now)));
   } catch (error) {
     console.error("Scheduler error:", error);
   }
 }
 
+export async function processDueJobs(now: Date): Promise<void> {
+  try {
+    const jobs = await getDueJobs(200);
+    for (const job of jobs) {
+      try {
+        const event = await getEventByIdAdmin(job.event_id);
+        if (!event) {
+          await markJobAttempt(job.id, false, "event_not_found");
+          continue;
+        }
+
+        const user = await findUserById(event.user_id);
+        if (!user) {
+          await markJobAttempt(job.id, false, "user_not_found");
+          continue;
+        }
+
+        const message = getReminderMessage(event, job.stage);
+        const html = buildEventEmailHtml(
+          user,
+          {
+            ...event,
+            status:
+              event.status === "missed" || job.stage.startsWith("missed")
+                ? "missed"
+                : "upcoming",
+          },
+          message.text,
+        );
+
+        let emailResult: any = { success: false, skipped: "no_email" };
+        if (user.email) {
+          try {
+            emailResult = await notification.sendEmail(
+              user.email,
+              message.subject,
+              message.text,
+              html,
+            );
+          } catch (err) {
+            console.error("Scheduler job sendEmail threw", err);
+            emailResult = { success: false, error: String(err) };
+          }
+        }
+
+        let smsResult: any = { success: false, skipped: "no_phone" };
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        if ((user as any).phone) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+            // @ts-ignore
+            smsResult = await notification.sendSms((user as any).phone, message.text);
+          } catch (err) {
+            console.error("Scheduler job sendSms threw", err);
+            smsResult = { success: false, error: String(err) };
+          }
+        }
+
+        const success = !!(emailResult?.success || smsResult?.success);
+        if (success) {
+          // mark event notified_stages
+          const nextStages = Array.from(new Set([...event.notified_stages, job.stage]));
+          await markEventStagesNotified(event.id, nextStages);
+        }
+
+        await markJobAttempt(job.id, success, success ? undefined : (emailResult?.error || smsResult?.error || 'unknown'));
+
+        if (parseStoredDate(event.datetime).getTime() <= now.getTime() && event.status !== "missed") {
+          await updateEventStatus(event.id, "missed");
+        }
+      } catch (err) {
+        console.error("Error processing job", job.id, err);
+        try {
+          await markJobAttempt(job.id, false, String(err));
+        } catch (e) {
+          console.error("Failed marking job attempt", job.id, e);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("processDueJobs error:", err);
+  }
+}
+
+export async function rebuildJobsFromEvents(): Promise<void> {
+  try {
+    const events = await getAllPendingEvents();
+    await Promise.all(events.map((ev) => createOrUpdateJobsForEvent(ev)));
+  } catch (err) {
+    console.error("rebuildJobsFromEvents error:", err);
+  }
+}
+
 export function startScheduler(): void {
   // At startup and every minute
-  runScheduler();
+  // Rebuild DB-backed jobs from events so restarts recreate pending jobs
+  rebuildJobsFromEvents()
+    .then(() => runScheduler())
+    .catch((err) => {
+      console.error("Failed to rebuild jobs on startup:", err);
+      runScheduler();
+    });
+
   setInterval(runScheduler, 1000 * 60);
 }

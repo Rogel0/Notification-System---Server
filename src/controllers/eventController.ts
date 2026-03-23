@@ -5,6 +5,7 @@ import {
   getEventById,
   updateEventStatus,
 } from "../models/eventModel";
+import { createOrUpdateJobsForEvent } from "../models/notificationJobModel";
 import { findUserById } from "../models/userModel";
 import notification, { NotificationResult } from "../utils/notification";
 
@@ -63,6 +64,13 @@ export async function addEvent(req: Request, res: Response) {
         message: "Failed to create event",
         error: err instanceof Error ? err.message : String(err),
       });
+  }
+
+  // enqueue scheduled notification jobs for this event
+  try {
+    await createOrUpdateJobsForEvent(newEvent);
+  } catch (err) {
+    console.warn("Failed to create notification jobs for event", newEvent?.id, err);
   }
 
   // notify user about the newly created event (email/sms)
