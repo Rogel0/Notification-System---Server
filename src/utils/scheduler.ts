@@ -440,7 +440,11 @@ export async function rebuildJobsFromEvents(): Promise<void> {
 
     const events = await getAllPendingEvents();
     const now = new Date();
-    await Promise.all(events.map((ev) => createOrUpdateJobsForEvent(ev, { now, pastToleranceMs: 1000 * 60 })));
+    await Promise.all(
+      events.map((ev) =>
+        createOrUpdateJobsForEvent(ev, { now, pastToleranceMs: 1000 * 60 }),
+      ),
+    );
   } catch (err) {
     console.error("rebuildJobsFromEvents error:", err);
   }

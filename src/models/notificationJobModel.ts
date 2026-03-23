@@ -100,7 +100,9 @@ export async function getDueJobs(limit = 100): Promise<any[]> {
   return result.rows;
 }
 
-export async function pruneStalePendingJobs(pastToleranceMinutes = 5): Promise<void> {
+export async function pruneStalePendingJobs(
+  pastToleranceMinutes = 5,
+): Promise<void> {
   // Mark pending jobs whose run_at is older than the specified tolerance as 'failed'
   await pool.query(
     `UPDATE notification_jobs
