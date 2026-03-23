@@ -2,7 +2,11 @@ import { Request, Response } from "express";
 import { buildEventEmailHtml } from "../utils/notification";
 import { findUserById } from "../models/userModel";
 import { getEventByIdAdmin } from "../models/eventModel";
-import { processEvent, runScheduler, getReminderMessage } from "../utils/scheduler";
+import {
+  processEvent,
+  runScheduler,
+  getReminderMessage,
+} from "../utils/scheduler";
 
 // Test notification endpoint removed to avoid accidental/mock sends.
 

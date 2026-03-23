@@ -58,19 +58,21 @@ export async function addEvent(req: Request, res: Response) {
     newEvent = await createEvent(userId, type, title, datetime, details);
   } catch (err) {
     console.error("addEvent DB error:", err);
-    return res
-      .status(500)
-      .json({
-        message: "Failed to create event",
-        error: err instanceof Error ? err.message : String(err),
-      });
+    return res.status(500).json({
+      message: "Failed to create event",
+      error: err instanceof Error ? err.message : String(err),
+    });
   }
 
   // enqueue scheduled notification jobs for this event
   try {
     await createOrUpdateJobsForEvent(newEvent);
   } catch (err) {
-    console.warn("Failed to create notification jobs for event", newEvent?.id, err);
+    console.warn(
+      "Failed to create notification jobs for event",
+      newEvent?.id,
+      err,
+    );
   }
 
   // notify user about the newly created event (email/sms)

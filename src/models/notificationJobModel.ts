@@ -13,7 +13,9 @@ function parseStoredDate(datetime: string | Date): Date {
   if (datetime instanceof Date) return datetime;
   const s = String(datetime).trim();
   if (/[zZ]$|[+\-]\d{2}:?\d{2}$/.test(s)) return new Date(s);
-  const isoMatch = s.match(/(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/);
+  const isoMatch = s.match(
+    /(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/,
+  );
   if (isoMatch) {
     const [, y, m, d, hh, mm, ss] = isoMatch;
     const year = Number(y);
@@ -25,7 +27,9 @@ function parseStoredDate(datetime: string | Date): Date {
     const utcMillis = Date.UTC(year, month, day, hour - 8, minute, second);
     return new Date(utcMillis);
   }
-  const spaceMatch = s.match(/(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})(?::(\d{2}))?/);
+  const spaceMatch = s.match(
+    /(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})(?::(\d{2}))?/,
+  );
   if (spaceMatch) {
     const [, y, m, d, hh, mm, ss] = spaceMatch;
     const year = Number(y);
@@ -67,7 +71,9 @@ export async function createOrUpdateJobsForEvent(event: Event): Promise<void> {
 }
 
 export async function deleteJobsForEvent(eventId: number): Promise<void> {
-  await pool.query("DELETE FROM notification_jobs WHERE event_id = $1", [eventId]);
+  await pool.query("DELETE FROM notification_jobs WHERE event_id = $1", [
+    eventId,
+  ]);
 }
 
 export async function getDueJobs(limit = 100): Promise<any[]> {
@@ -78,7 +84,11 @@ export async function getDueJobs(limit = 100): Promise<any[]> {
   return result.rows;
 }
 
-export async function markJobAttempt(jobId: number, success: boolean, lastError?: string): Promise<void> {
+export async function markJobAttempt(
+  jobId: number,
+  success: boolean,
+  lastError?: string,
+): Promise<void> {
   if (success) {
     await pool.query(
       "UPDATE notification_jobs SET status = 'done', attempts = attempts + 1, last_error = NULL, updated_at = NOW() WHERE id = $1",
@@ -98,11 +108,17 @@ export async function markJobAttempt(jobId: number, success: boolean, lastError?
 }
 
 export async function getJobsForEvent(eventId: number): Promise<any[]> {
-  const res = await pool.query("SELECT * FROM notification_jobs WHERE event_id = $1 ORDER BY run_at ASC", [eventId]);
+  const res = await pool.query(
+    "SELECT * FROM notification_jobs WHERE event_id = $1 ORDER BY run_at ASC",
+    [eventId],
+  );
   return res.rows;
 }
 
 export async function getUpcomingJobs(limit = 100): Promise<any[]> {
-  const res = await pool.query("SELECT * FROM notification_jobs WHERE status = 'pending' AND run_at > NOW() ORDER BY run_at ASC LIMIT $1", [limit]);
+  const res = await pool.query(
+    "SELECT * FROM notification_jobs WHERE status = 'pending' AND run_at > NOW() ORDER BY run_at ASC LIMIT $1",
+    [limit],
+  );
   return res.rows;
 }

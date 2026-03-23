@@ -328,7 +328,10 @@ export async function processDueJobs(now: Date): Promise<void> {
           try {
             // eslint-disable-next-line @typescript-eslint/ban-ts-comment
             // @ts-ignore
-            smsResult = await notification.sendSms((user as any).phone, message.text);
+            smsResult = await notification.sendSms(
+              (user as any).phone,
+              message.text,
+            );
           } catch (err) {
             console.error("Scheduler job sendSms threw", err);
             smsResult = { success: false, error: String(err) };
@@ -338,13 +341,24 @@ export async function processDueJobs(now: Date): Promise<void> {
         const success = !!(emailResult?.success || smsResult?.success);
         if (success) {
           // mark event notified_stages
-          const nextStages = Array.from(new Set([...event.notified_stages, job.stage]));
+          const nextStages = Array.from(
+            new Set([...event.notified_stages, job.stage]),
+          );
           await markEventStagesNotified(event.id, nextStages);
         }
 
-        await markJobAttempt(job.id, success, success ? undefined : (emailResult?.error || smsResult?.error || 'unknown'));
+        await markJobAttempt(
+          job.id,
+          success,
+          success
+            ? undefined
+            : emailResult?.error || smsResult?.error || "unknown",
+        );
 
-        if (parseStoredDate(event.datetime).getTime() <= now.getTime() && event.status !== "missed") {
+        if (
+          parseStoredDate(event.datetime).getTime() <= now.getTime() &&
+          event.status !== "missed"
+        ) {
           await updateEventStatus(event.id, "missed");
         }
       } catch (err) {
