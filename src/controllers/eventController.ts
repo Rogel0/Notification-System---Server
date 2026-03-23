@@ -42,7 +42,11 @@ export async function addEvent(req: Request, res: Response) {
       .json({ message: "Type, title, and datetime are required" });
   }
 
-  const eventDate = new Date(datetime);
+  // Normalize and validate incoming datetime. Convert to an explicit UTC ISO
+  // string so the DB stores a timezone-aware value and both server/client
+  // interpret it consistently.
+  const parsed = new Date(datetime);
+  const eventDate = parsed;
   if (Number.isNaN(eventDate.getTime()) || eventDate < new Date()) {
     return res
       .status(400)
@@ -55,7 +59,8 @@ export async function addEvent(req: Request, res: Response) {
 
   let newEvent;
   try {
-    newEvent = await createEvent(userId, type, title, datetime, details);
+    const normalizedDatetime = eventDate.toISOString();
+    newEvent = await createEvent(userId, type, title, normalizedDatetime, details);
   } catch (err) {
     console.error("addEvent DB error:", err);
     return res.status(500).json({
