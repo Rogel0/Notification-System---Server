@@ -144,8 +144,9 @@ export function buildEventEmailHtml(
   const computeHoursLeft = () => {
     try {
       const diff =
-        (new Date(event.datetime).getTime() - Date.now()) / (1000 * 60 * 60);
-      return Math.max(0, Math.round(diff * 100) / 100);
+        (parseStoredDate(event.datetime).getTime() - Date.now()) / (1000 * 60 * 60);
+      // Return integer hours (round up) with no decimal places so emails don't show fractional hours
+      return Math.max(0, Math.ceil(diff));
     } catch {
       return 0;
     }

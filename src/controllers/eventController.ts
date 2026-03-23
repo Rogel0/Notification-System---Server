@@ -5,6 +5,7 @@ import {
   getEventById,
   updateEventStatus,
 } from "../models/eventModel";
+import { parseStoredDate } from "../utils/scheduler";
 import { createOrUpdateJobsForEvent } from "../models/notificationJobModel";
 import { findUserById } from "../models/userModel";
 import notification, { NotificationResult } from "../utils/notification";
@@ -20,7 +21,10 @@ export async function listEvents(req: Request, res: Response) {
   const normalized = events.map((event) => {
     const computedStatus =
       event.status === "completed" ? "completed" : getStatus(event.datetime);
-    return { ...event, status: computedStatus };
+    // Normalize datetime to an explicit ISO string (UTC) for the client to avoid
+    // timezone-parsing mismatches between browser and server.
+    const normalizedDatetime = parseStoredDate(event.datetime).toISOString();
+    return { ...event, status: computedStatus, datetime: normalizedDatetime };
   });
 
   await Promise.all(
@@ -60,7 +64,13 @@ export async function addEvent(req: Request, res: Response) {
   let newEvent;
   try {
     const normalizedDatetime = eventDate.toISOString();
-    newEvent = await createEvent(userId, type, title, normalizedDatetime, details);
+    newEvent = await createEvent(
+      userId,
+      type,
+      title,
+      normalizedDatetime,
+      details,
+    );
   } catch (err) {
     console.error("addEvent DB error:", err);
     return res.status(500).json({
@@ -123,7 +133,9 @@ export async function getEvent(req: Request, res: Response) {
   const eventId = Number(req.params.id);
   const event = await getEventById(eventId, userId);
   if (!event) return res.status(404).json({ message: "Event not found" });
-  res.json({ event });
+  // normalize datetime
+  const normalized = { ...event, datetime: parseStoredDate(event.datetime).toISOString() };
+  res.json({ event: normalized });
 }
 
 export async function completeEvent(req: Request, res: Response) {
