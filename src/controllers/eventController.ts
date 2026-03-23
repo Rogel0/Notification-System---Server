@@ -134,7 +134,10 @@ export async function getEvent(req: Request, res: Response) {
   const event = await getEventById(eventId, userId);
   if (!event) return res.status(404).json({ message: "Event not found" });
   // normalize datetime
-  const normalized = { ...event, datetime: parseStoredDate(event.datetime).toISOString() };
+  const normalized = {
+    ...event,
+    datetime: parseStoredDate(event.datetime).toISOString(),
+  };
   res.json({ event: normalized });
 }
 
