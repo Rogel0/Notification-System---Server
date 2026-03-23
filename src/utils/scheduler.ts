@@ -140,7 +140,7 @@ export function getReminderMessage(
     "24_hours_before": "24 hours",
     "3_hours_before": "3 hours",
     "15_minutes_before": "15 minutes",
-    "exact": "now",
+    exact: "now",
   };
 
   // Special-case 'exact' to be user-friendly
