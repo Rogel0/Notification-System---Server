@@ -36,8 +36,20 @@ function formatTriggerDate(date: Date) {
 }
 
 function getHoursLeft(eventDate: Date, now: Date) {
-  const diff = (eventDate.getTime() - now.getTime()) / (1000 * 60 * 60);
-  return Math.max(0, Math.round(diff * 100) / 100);
+  const diffMs = Math.max(0, eventDate.getTime() - now.getTime());
+  const totalSeconds = Math.floor(diffMs / 1000);
+  const days = Math.floor(totalSeconds / (3600 * 24));
+  const hours = Math.floor((totalSeconds % (3600 * 24)) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days} day${days > 1 ? "s" : ""}`);
+  if (hours > 0) parts.push(`${hours} hour${hours > 1 ? "s" : ""}`);
+  if (minutes > 0) parts.push(`${minutes} minute${minutes > 1 ? "s" : ""}`);
+  if (seconds > 0 || parts.length === 0)
+    parts.push(`${seconds} second${seconds !== 1 ? "s" : ""}`);
+
+  return parts.join(", ").replace(/, ([^,]*)$/, " and $1");
 }
 
 export function parseStoredDate(datetime: string | Date): Date {
@@ -122,21 +134,21 @@ export function getReminderMessage(
     );
   }
 
-  const hoursLeft = getHoursLeft(eventDate, new Date());
+  const timeLeft = getHoursLeft(eventDate, new Date());
 
   // Use precise wording per project requirements
   if (event.type === "Deadline") {
-    const base = `Reminder: You have a deadline on ${dateLabel}. You have ${hoursLeft} hours left before deadline.`;
+    const base = `Reminder: You have a deadline on ${dateLabel}. You have ${timeLeft} left before the deadline.`;
     return createBody("Reminder:", base);
   }
 
   if (event.type === "Meeting") {
-    const base = `Reminder: You have a meeting on ${dateLabel}. You have ${hoursLeft} hours left before the meeting.`;
+    const base = `Reminder: You have a meeting on ${dateLabel}. You have ${timeLeft} left before the meeting.`;
     return createBody("Reminder:", base);
   }
 
   // Business Trip
-  const base = `Reminder: You have a business trip on ${dateLabel}. You have ${hoursLeft} hours left before the trip.`;
+  const base = `Reminder: You have a business trip on ${dateLabel}. You have ${timeLeft} left before the trip.`;
   return createBody("Reminder:", base);
 }
 
