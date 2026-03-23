@@ -51,6 +51,11 @@ export async function getEventById(
   return result.rows[0] || null;
 }
 
+export async function getEventByIdAdmin(id: number): Promise<Event | null> {
+  const result = await pool.query("SELECT * FROM events WHERE id = $1", [id]);
+  return result.rows[0] || null;
+}
+
 export async function updateEventStatus(
   id: number,
   status: string,

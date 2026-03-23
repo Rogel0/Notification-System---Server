@@ -1,4 +1,5 @@
 import { User } from "../types/user";
+import { parseStoredDate } from "./scheduler";
 
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY;
 const SENDGRID_FROM = process.env.SENDGRID_FROM_EMAIL;
@@ -129,8 +130,44 @@ export async function sendSms(
   }
 }
 
-export function buildEventEmailHtml(user: User, event: any): string {
-  const eventTime = new Date(event.datetime).toLocaleString();
+export function buildEventEmailHtml(
+  user: User,
+  event: any,
+  messageBody?: string,
+): string {
+  const eventDateObj = parseStoredDate(event.datetime);
+  const eventTime = new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Manila",
+  }).format(eventDateObj);
+  const computeHoursLeft = () => {
+    try {
+      const diff =
+        (new Date(event.datetime).getTime() - Date.now()) / (1000 * 60 * 60);
+      return Math.max(0, Math.round(diff * 100) / 100);
+    } catch {
+      return 0;
+    }
+  };
+
+  const hoursLeft = computeHoursLeft();
+
+  const messageParagraph = messageBody
+    ? `<p>${messageBody}</p>`
+    : event.status === "missed"
+      ? event.type === "Deadline"
+        ? `<p>Urgent Reminder: You missed the deadline for ${event.title} that was ended on ${eventTime}.</p>`
+        : event.type === "Meeting"
+          ? `<p>Urgent Reminder: You missed the meeting on ${eventTime}.</p>`
+          : `<p>Urgent Reminder: You missed your business trip on ${eventTime}.</p>`
+      : // upcoming
+        event.type === "Deadline"
+        ? `<p>Reminder: You have a deadline on ${eventTime}. You have ${hoursLeft} hours left before deadline.</p>`
+        : event.type === "Meeting"
+          ? `<p>Reminder: You have a meeting on ${eventTime}. You have ${hoursLeft} hours left before the meeting.</p>`
+          : `<p>Reminder: You have a business trip on ${eventTime}. You have ${hoursLeft} hours left before the trip.</p>`;
+
   return `
   <!DOCTYPE html>
   <html lang="en">
@@ -176,7 +213,7 @@ export function buildEventEmailHtml(user: User, event: any): string {
         <p class="status">${event.status === "missed" ? "Urgent Attention Needed" : "Upcoming Reminder"}</p>
 
         <h2>Hi ${user.name || user.email},</h2>
-        <p>Your ${event.type.toLowerCase()} is on the calendar. Here are the details:</p>
+        ${messageParagraph}
 
         <div class="card">
           <p><strong>Title:</strong> ${event.title}</p>
@@ -184,14 +221,6 @@ export function buildEventEmailHtml(user: User, event: any): string {
           <p><strong>Details:</strong> ${event.details || "No additional notes"}</p>
           <p><strong>Current Status:</strong> ${event.status || "upcoming"}</p>
         </div>
-
-        <p>
-          ${
-            event.status === "missed"
-              ? `Urgent Reminder: You missed your ${event.type.toLowerCase()} on ${eventTime}.`
-              : `Reminder: You have a ${event.type.toLowerCase()} on ${eventTime}. Make sure to check your schedule and prepare accordingly.`
-          }
-        </p>
 
         <a class="cta" href="http://localhost:5173/dashboard">Go to Dashboard</a>
       </div>
