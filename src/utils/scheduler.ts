@@ -11,6 +11,7 @@ import {
   getDueJobs,
   markJobAttempt,
   createOrUpdateJobsForEvent,
+  pruneStalePendingJobs,
 } from "../models/notificationJobModel";
 
 const scheduleWindows = [
@@ -430,8 +431,16 @@ export async function processDueJobs(now: Date): Promise<void> {
 
 export async function rebuildJobsFromEvents(): Promise<void> {
   try {
+    // First prune any old pending jobs so we don't resurrect stale stages
+    try {
+      await pruneStalePendingJobs(5); // 5 minutes
+    } catch (e) {
+      console.warn("pruneStalePendingJobs failed:", e);
+    }
+
     const events = await getAllPendingEvents();
-    await Promise.all(events.map((ev) => createOrUpdateJobsForEvent(ev)));
+    const now = new Date();
+    await Promise.all(events.map((ev) => createOrUpdateJobsForEvent(ev, { now, pastToleranceMs: 1000 * 60 })));
   } catch (err) {
     console.error("rebuildJobsFromEvents error:", err);
   }

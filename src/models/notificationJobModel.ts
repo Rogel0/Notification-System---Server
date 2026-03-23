@@ -44,15 +44,31 @@ function parseStoredDate(datetime: string | Date): Date {
   return new Date(s);
 }
 
-export async function createOrUpdateJobsForEvent(event: Event): Promise<void> {
+export async function createOrUpdateJobsForEvent(
+  event: Event,
+  opts?: { now?: Date; pastToleranceMs?: number },
+): Promise<void> {
   const eventDate = parseStoredDate(event.datetime);
   const eventMillis = eventDate.getTime();
+  const now = opts?.now ?? new Date();
+  const pastToleranceMs = opts?.pastToleranceMs ?? 1000 * 60; // 1 minute
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
     for (const win of scheduleWindows) {
-      const runAt = new Date(eventMillis - win.offsetMillis).toISOString();
+      const runAtMillis = eventMillis - win.offsetMillis;
+      // Skip scheduling jobs that are already stale (older than tolerance)
+      if (runAtMillis < now.getTime() - pastToleranceMs) {
+        // Ensure if a job exists for this stage, we don't resurrect it unintentionally.
+        await client.query(
+          `DELETE FROM notification_jobs WHERE event_id = $1 AND stage = $2 AND status = 'pending'`,
+          [event.id, win.stage],
+        );
+        continue;
+      }
+
+      const runAt = new Date(runAtMillis).toISOString();
       await client.query(
         `INSERT INTO notification_jobs (event_id, stage, run_at)
          VALUES ($1, $2, $3)
@@ -82,6 +98,16 @@ export async function getDueJobs(limit = 100): Promise<any[]> {
     [limit],
   );
   return result.rows;
+}
+
+export async function pruneStalePendingJobs(pastToleranceMinutes = 5): Promise<void> {
+  // Mark pending jobs whose run_at is older than the specified tolerance as 'failed'
+  await pool.query(
+    `UPDATE notification_jobs
+     SET status = 'failed', last_error = 'stale', updated_at = NOW()
+     WHERE status = 'pending' AND run_at < NOW() - ($1::int || ' minutes')::interval`,
+    [pastToleranceMinutes],
+  );
 }
 
 export async function markJobAttempt(
