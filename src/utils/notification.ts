@@ -6,6 +6,7 @@ const SENDGRID_FROM = process.env.SENDGRID_FROM_EMAIL;
 const TWILIO_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 const TWILIO_FROM = process.env.TWILIO_FROM_NUMBER;
+const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 
 let sgMail: any = null;
 if (SENDGRID_API_KEY) {
@@ -31,6 +32,29 @@ if (TWILIO_SID && TWILIO_TOKEN) {
     // eslint-disable-next-line no-console
     console.warn("Twilio module not available or failed to initialize", err);
     twilioClient = null;
+  }
+}
+
+let discordClient: any = null;
+if (DISCORD_BOT_TOKEN) {
+  try {
+    // lazy require discord.js so app can run without it in environments
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { Client, GatewayIntentBits } = require("discord.js");
+    // Provide minimal intents required by discord.js v14.
+    // `Guilds` is useful for basic operations; `GuildMembers` improves lookup by username/tag.
+    // `DirectMessages` enables DM channel handling.
+    discordClient = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.DirectMessages] });
+    // Start login but do not await here; if token invalid we'll catch on use
+    discordClient.login(DISCORD_BOT_TOKEN).catch((err: any) => {
+      // eslint-disable-next-line no-console
+      console.warn("Discord client failed to login:", err?.message || err);
+      discordClient = null;
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("discord.js not available or failed to initialize", err);
+    discordClient = null;
   }
 }
 
@@ -127,6 +151,135 @@ export async function sendSms(
     // eslint-disable-next-line no-console
     console.error("Twilio send error:", err.message || err);
     return { success: false, error: err.message || "Twilio send error" };
+  }
+}
+
+export async function resolveDiscordIdByTag(tag: string): Promise<string | null> {
+  if (!discordClient) return null;
+
+  const cleaned = tag.trim();
+  if (cleaned.length === 0) return null;
+
+  // if tag includes discriminator (#1234), try exact tag first
+  if (cleaned.includes("#")) {
+    const normalizedTag = cleaned
+      .split("#")
+      .map((s, idx) => (idx === 0 ? s.trim().replace(/\s+/g, "") : s.replace(/\D/g, "")))
+      .join("#");
+    console.log("resolveDiscordIdByTag: trying exact # form", normalizedTag);
+
+    const userFromCache = discordClient.users.cache.find((u: any) => u.tag.toLowerCase() === normalizedTag.toLowerCase());
+    if (userFromCache) return userFromCache.id;
+
+    for (const guild of discordClient.guilds.cache.values()) {
+      try {
+        const username = normalizedTag.split("#")[0];
+        const members = await guild.members.fetch({ query: username, limit: 5 });
+        const match = members.find((m: any) => m.user.tag.toLowerCase() === normalizedTag.toLowerCase());
+        if (match) {
+          return match.user.id;
+        }
+      } catch {
+        // ignore errors
+      }
+    }
+
+    return null;
+  }
+
+  // If input is username+4digits without '#', try splitting and matching against both
+  const usernameDigitsMatch = cleaned.match(/^(.+?)(\d{4})$/);
+  if (usernameDigitsMatch) {
+    const usernamePart = usernameDigitsMatch[1].replace(/\s+/g, "");
+    const discPart = usernameDigitsMatch[2];
+    const tagWithHash = `${usernamePart}#${discPart}`;
+    const tagWithoutHash = `${usernamePart}${discPart}`;
+
+    const userFromCache = discordClient.users.cache.find((u: any) => {
+      return (
+        u.tag.toLowerCase() === tagWithHash.toLowerCase() ||
+        (u.username + discPart).toLowerCase() === tagWithoutHash.toLowerCase()
+      );
+    });
+    console.log("resolveDiscordIdByTag:", { candidate: tagWithoutHash, tagWithHash, fromCache: !!userFromCache });
+    if (userFromCache) return userFromCache.id;
+
+    for (const guild of discordClient.guilds.cache.values()) {
+      try {
+        const members = await guild.members.fetch({ query: usernamePart, limit: 5 });
+        const match = members.find((m: any) => {
+          return (
+            m.user.tag.toLowerCase() === tagWithHash.toLowerCase() ||
+            (m.user.username + discPart).toLowerCase() === tagWithoutHash.toLowerCase()
+          );
+        });
+        if (match) return match.user.id;
+      } catch {
+        // ignore
+      }
+    }
+
+    // Do not return yet; some modern usernames are all-numeric or end in 4 digits.
+    // Fall through to username-only lookup using the original cleaned value.
+  }
+
+  // fallback: username only, ignore discriminator
+  const username = cleaned.replace(/\s+/g, "");
+  console.log("resolveDiscordIdByTag: fallback username-only lookup", username);
+  const userFromCache = discordClient.users.cache.find((u: any) => u.username.toLowerCase() === username.toLowerCase());
+  if (userFromCache) return userFromCache.id;
+
+  for (const guild of discordClient.guilds.cache.values()) {
+    try {
+      const members = await guild.members.fetch({ query: username, limit: 5 });
+      const match = members.find((m: any) => m.user.username.toLowerCase() === username.toLowerCase());
+      if (match) {
+        return match.user.id;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return null;
+}
+
+export async function sendDiscordDm(
+  discordId: string,
+  content: string | { embeds?: any[]; content?: string },
+): Promise<NotificationResult> {
+  if (!discordClient) {
+    // eslint-disable-next-line no-console
+    console.warn("Discord bot not configured; skipping DM to", discordId);
+    return { success: false, skipped: "discord_not_configured" };
+  }
+
+  try {
+    // ensure client ready
+    if (!discordClient?.isReady?.()) {
+      // wait briefly for ready state (max 3s)
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    const user = await discordClient.users.fetch(discordId);
+    if (!user) {
+      return { success: false, error: "user_not_found" };
+    }
+
+    // content may be a string or an object suitable for send()
+    if (typeof content === "string") {
+      await user.send({ content });
+    } else {
+      await user.send(content);
+    }
+    return { success: true };
+  } catch (err: any) {
+    // eslint-disable-next-line no-console
+    console.error("Discord send DM error:", err?.message || err);
+    // Map common Discord errors
+    if (String(err).includes("Unknown User")) {
+      return { success: false, error: "unknown_user" };
+    }
+    return { success: false, error: err?.message || "discord_error" };
   }
 }
 
@@ -245,7 +398,15 @@ export async function notifyUserOfEvent(user: User, event: any) {
   ).toLocaleString()}.`;
   const html = buildEventEmailHtml(user, event);
 
-  console.log("notifyUserOfEvent: user", user.email, (user as any).phone);
+  console.log(
+    "notifyUserOfEvent: user",
+    user.email,
+    (user as any).phone,
+    "discord_username=", (user as any).discord_username,
+    "discord_tag=", (user as any).discord_tag,
+    "discord_id=", (user as any).discord_id,
+    "discord_verified=", (user as any).discord_verified,
+  );
 
   const result: { email?: NotificationResult; sms?: NotificationResult } = {};
 
@@ -271,6 +432,72 @@ export async function notifyUserOfEvent(user: User, event: any) {
     result.sms = { success: false, skipped: "no_phone" };
   }
 
+    // Discord DM channel: send DM if user has discord_id or username/tag available
+  let targetDiscordId = (user as any).discord_id || null;
+  const discordTag = (user as any).discord_tag || null;
+
+  let candidateDiscordTag = discordTag;
+
+  if (!targetDiscordId && candidateDiscordTag) {
+    // If stored value is username+tag no '#', also attempt the '#' variant for compatibility.
+    if (!candidateDiscordTag.includes("#") && candidateDiscordTag.match(/^(.+?)(\d{4})$/)) {
+      // 0026204 -> try 002#6204 as well
+      candidateDiscordTag = `${candidateDiscordTag}`;
+    }
+  }
+
+  if (!targetDiscordId && candidateDiscordTag) {
+    targetDiscordId = await resolveDiscordIdByTag(candidateDiscordTag);
+    if (!targetDiscordId && candidateDiscordTag.includes("#")) {
+      targetDiscordId = await resolveDiscordIdByTag(candidateDiscordTag.replace("#", ""));
+    }
+    if (!targetDiscordId && !candidateDiscordTag.includes("#") && candidateDiscordTag.match(/^(.+?)(\d{4})$/)) {
+      const username = candidateDiscordTag.slice(0, -4);
+      const disc = candidateDiscordTag.slice(-4);
+      targetDiscordId = await resolveDiscordIdByTag(`${username}#${disc}`);
+    }
+
+    // Intentionally do not persist resolved discord_id here so username/tag
+    // remains the primary lookup path.
+  }
+
+  const discordVerified = Boolean((user as any).discord_verified || targetDiscordId);
+
+  if (targetDiscordId && discordVerified) {
+    try {
+      const discordPayload = {
+        embeds: [
+          {
+            title: `${event.type} Reminder: ${event.title}`,
+            description: `${event.type} scheduled at ${new Date(
+              event.datetime,
+            ).toLocaleString()} (Manila)`,
+            color: 5814783,
+            fields: [
+              { name: "Status", value: event.status || "upcoming", inline: true },
+              { name: "Hours left", value: String(Math.max(0, Math.ceil((parseStoredDate(event.datetime).getTime() - Date.now()) / (1000 * 60 * 60)))), inline: true },
+            ],
+          },
+        ],
+      };
+      const discordRes = await sendDiscordDm(targetDiscordId, discordPayload);
+      // attach to result
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      result.discord = discordRes;
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn("notifyUserOfEvent: discord send failed", e);
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      result.discord = { success: false, error: "discord_send_failed" };
+    }
+  } else {
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore
+    result.discord = { success: false, skipped: "no_discord" };
+  }
+
   return result;
 }
 
@@ -278,6 +505,7 @@ export function checkNotificationConfig() {
   return {
     sendgrid: !!(SENDGRID_API_KEY && SENDGRID_FROM && sgMail),
     twilio: !!(TWILIO_SID && TWILIO_TOKEN && TWILIO_FROM && twilioClient),
+    discord: !!(DISCORD_BOT_TOKEN && discordClient),
   };
 }
 
@@ -285,5 +513,6 @@ export default {
   sendEmail,
   sendSms,
   notifyUserOfEvent,
+  sendDiscordDm,
   checkNotificationConfig,
 };

@@ -6,13 +6,23 @@ export async function createUser(
   password: string,
   name?: string | null,
   phone?: string | null,
+  discordId?: string | null,
+  discordTag?: string | null,
+  discordUsername?: string | null,
 ): Promise<void> {
   await pool.query(
-    "INSERT INTO users (email, password, name, phone) VALUES ($1, $2, $3, $4)",
-    [email, password, name || null, phone || null],
+    "INSERT INTO users (email, password, name, phone, discord_id, discord_tag, discord_username) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+    [
+      email,
+      password,
+      name || null,
+      phone || null,
+      discordId || null,
+      discordTag || null,
+      discordUsername || null,
+    ],
   );
 }
-
 export async function findUserByEmail(email: string): Promise<User | null> {
   const result = await pool.query("SELECT * FROM users WHERE email = $1", [
     email,
@@ -23,4 +33,40 @@ export async function findUserByEmail(email: string): Promise<User | null> {
 export async function findUserById(id: number): Promise<User | null> {
   const result = await pool.query("SELECT * FROM users WHERE id = $1", [id]);
   return result.rows[0] || null;
+}
+
+export async function updateDiscordInfo(
+  id: number,
+  discordId?: string | null,
+  discordVerified?: boolean,
+  discordTag?: string | null,
+  discordUsername?: string | null,
+): Promise<void> {
+  const fields: string[] = [];
+  const values: any[] = [];
+
+  if (typeof discordId !== "undefined") {
+    fields.push(`discord_id = $${fields.length + 1}`);
+    values.push(discordId);
+  }
+  if (typeof discordVerified !== "undefined") {
+    fields.push(`discord_verified = $${fields.length + 1}`);
+    values.push(discordVerified);
+  }
+  if (typeof discordTag !== "undefined") {
+    fields.push(`discord_tag = $${fields.length + 1}`);
+    values.push(discordTag);
+  }
+  if (typeof discordUsername !== "undefined") {
+    fields.push(`discord_username = $${fields.length + 1}`);
+    values.push(discordUsername);
+  }
+
+  if (fields.length === 0) return;
+
+  values.push(id);
+  await pool.query(
+    `UPDATE users SET ${fields.join(", ")} WHERE id = $${values.length}`,
+    values,
+  );
 }

@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
-import notification, { buildEventEmailHtml } from "../utils/notification";
+import notification, { buildEventEmailHtml, resolveDiscordIdByTag, sendDiscordDm } from "../utils/notification";
+import { normalizeDiscordInput } from "../utils/discordInput";
 import { findUserById } from "../models/userModel";
 import { getEventByIdAdmin } from "../models/eventModel";
 import {
@@ -78,6 +79,91 @@ export async function previewEvent(req: Request, res: Response) {
 }
 
 // Seed mock events endpoint removed.
+
+export async function resolveDiscordTag(req: Request, res: Response) {
+  const tag = String(req.query.tag || req.body.tag || "").trim();
+  if (!tag) {
+    return res.status(400).json({ message: "Missing tag query param" });
+  }
+
+  try {
+    const normalized = normalizeDiscordInput(tag);
+    if (normalized.discordId) {
+      return res.json({ success: true, discordId: normalized.discordId, source: "discord_id" });
+    }
+
+    // Build effectiveTag as username+tag (no '#') when both parts available, otherwise fall back
+    let effectiveTag: string;
+    if (normalized.discordUsername && normalized.discordTag) {
+      effectiveTag = `${normalized.discordUsername}#${normalized.discordTag}`;
+    } else if (normalized.discordUsername) {
+      effectiveTag = normalized.discordUsername;
+    } else if (normalized.discordTag) {
+      effectiveTag = tag;
+    } else {
+      effectiveTag = tag;
+    }
+
+    let discordId = await resolveDiscordIdByTag(effectiveTag);
+    if (!discordId && normalized.discordUsername && normalized.discordTag) {
+      discordId = await resolveDiscordIdByTag(`${normalized.discordUsername}${normalized.discordTag}`);
+      effectiveTag = `${normalized.discordUsername}${normalized.discordTag}`;
+    }
+
+    if (!discordId) {
+      return res.json({ success: false, error: "not_found", normalizedTag: normalized.discordTag });
+    }
+    return res.json({ success: true, discordId, normalizedTag: normalized.discordTag });
+  } catch (err: any) {
+    console.error("resolveDiscordTag error", err);
+    return res.status(500).json({ success: false, error: err.message || "resolve_failed" });
+  }
+}
+
+export async function sendDiscordTest(req: Request, res: Response) {
+  const tag = String(req.query.tag || req.body.tag || "").trim();
+  if (!tag) {
+    return res.status(400).json({ message: "Missing tag query param" });
+  }
+
+  try {
+    const normalized = normalizeDiscordInput(tag);
+    let discordId = normalized.discordId;
+    let effectiveTag: string;
+    if (normalized.discordUsername && normalized.discordTag) {
+      effectiveTag = `${normalized.discordUsername}#${normalized.discordTag}`;
+    } else if (normalized.discordUsername) {
+      effectiveTag = normalized.discordUsername;
+    } else if (normalized.discordTag) {
+      effectiveTag = tag;
+    } else {
+      effectiveTag = tag;
+    }
+
+    if (!discordId) {
+      discordId = await resolveDiscordIdByTag(effectiveTag);
+      if (!discordId && normalized.discordUsername && normalized.discordTag) {
+        // try legacy username+tag form without '#'
+        effectiveTag = `${normalized.discordUsername}${normalized.discordTag}`;
+        discordId = await resolveDiscordIdByTag(effectiveTag);
+      }
+    }
+
+    if (!discordId) {
+      return res.json({ success: false, error: "not_found", normalizedTag: normalized.discordTag });
+    }
+
+    const message = `Omega Notification test message for ${effectiveTag} at ${new Date().toLocaleString()}`;
+    const result = await sendDiscordDm(discordId, { content: message });
+    if (!result.success) {
+      return res.json({ success: false, discordId, result, normalizedTag: normalized.discordTag });
+    }
+    return res.json({ success: true, discordId, result, normalizedTag: normalized.discordTag });
+  } catch (err: any) {
+    console.error("sendDiscordTest error", err);
+    return res.status(500).json({ success: false, error: err.message || "send_failed" });
+  }
+}
 
 export async function triggerSchedulerNow(req: Request, res: Response) {
   try {
