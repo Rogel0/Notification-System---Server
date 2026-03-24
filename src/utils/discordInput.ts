@@ -4,7 +4,9 @@ export type DiscordNormalized = {
   discordUsername: string | null;
 };
 
-export function normalizeDiscordInput(value: string | null | undefined): DiscordNormalized {
+export function normalizeDiscordInput(
+  value: string | null | undefined,
+): DiscordNormalized {
   const raw = String(value || "").trim();
   if (!raw) {
     return {
@@ -38,7 +40,10 @@ export function normalizeDiscordInput(value: string | null | undefined): Discord
   if (clean.includes("#")) {
     const [userPart, discPart] = clean.split("#", 2);
     const username = userPart.trim().replace(/\s+/g, "");
-    const discriminator = String(discPart || "").replace(/\D/g, "").padStart(4, "0").slice(-4);
+    const discriminator = String(discPart || "")
+      .replace(/\D/g, "")
+      .padStart(4, "0")
+      .slice(-4);
     if (username && /^[0-9]{4}$/.test(discriminator)) {
       // store tag as digits only; callers should combine when needed: username#tag
       return {
@@ -80,4 +85,3 @@ export function normalizeDiscordInput(value: string | null | undefined): Discord
     discordUsername: null,
   };
 }
-

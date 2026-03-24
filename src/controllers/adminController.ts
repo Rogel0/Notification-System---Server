@@ -1,5 +1,9 @@
 import { Request, Response } from "express";
-import notification, { buildEventEmailHtml, resolveDiscordIdByTag, sendDiscordDm } from "../utils/notification";
+import notification, {
+  buildEventEmailHtml,
+  resolveDiscordIdByTag,
+  sendDiscordDm,
+} from "../utils/notification";
 import { normalizeDiscordInput } from "../utils/discordInput";
 import { findUserById } from "../models/userModel";
 import { getEventByIdAdmin } from "../models/eventModel";
@@ -89,7 +93,11 @@ export async function resolveDiscordTag(req: Request, res: Response) {
   try {
     const normalized = normalizeDiscordInput(tag);
     if (normalized.discordId) {
-      return res.json({ success: true, discordId: normalized.discordId, source: "discord_id" });
+      return res.json({
+        success: true,
+        discordId: normalized.discordId,
+        source: "discord_id",
+      });
     }
 
     // Build effectiveTag as username+tag (no '#') when both parts available, otherwise fall back
@@ -106,17 +114,29 @@ export async function resolveDiscordTag(req: Request, res: Response) {
 
     let discordId = await resolveDiscordIdByTag(effectiveTag);
     if (!discordId && normalized.discordUsername && normalized.discordTag) {
-      discordId = await resolveDiscordIdByTag(`${normalized.discordUsername}${normalized.discordTag}`);
+      discordId = await resolveDiscordIdByTag(
+        `${normalized.discordUsername}${normalized.discordTag}`,
+      );
       effectiveTag = `${normalized.discordUsername}${normalized.discordTag}`;
     }
 
     if (!discordId) {
-      return res.json({ success: false, error: "not_found", normalizedTag: normalized.discordTag });
+      return res.json({
+        success: false,
+        error: "not_found",
+        normalizedTag: normalized.discordTag,
+      });
     }
-    return res.json({ success: true, discordId, normalizedTag: normalized.discordTag });
+    return res.json({
+      success: true,
+      discordId,
+      normalizedTag: normalized.discordTag,
+    });
   } catch (err: any) {
     console.error("resolveDiscordTag error", err);
-    return res.status(500).json({ success: false, error: err.message || "resolve_failed" });
+    return res
+      .status(500)
+      .json({ success: false, error: err.message || "resolve_failed" });
   }
 }
 
@@ -150,18 +170,34 @@ export async function sendDiscordTest(req: Request, res: Response) {
     }
 
     if (!discordId) {
-      return res.json({ success: false, error: "not_found", normalizedTag: normalized.discordTag });
+      return res.json({
+        success: false,
+        error: "not_found",
+        normalizedTag: normalized.discordTag,
+      });
     }
 
     const message = `Omega Notification test message for ${effectiveTag} at ${new Date().toLocaleString()}`;
     const result = await sendDiscordDm(discordId, { content: message });
     if (!result.success) {
-      return res.json({ success: false, discordId, result, normalizedTag: normalized.discordTag });
+      return res.json({
+        success: false,
+        discordId,
+        result,
+        normalizedTag: normalized.discordTag,
+      });
     }
-    return res.json({ success: true, discordId, result, normalizedTag: normalized.discordTag });
+    return res.json({
+      success: true,
+      discordId,
+      result,
+      normalizedTag: normalized.discordTag,
+    });
   } catch (err: any) {
     console.error("sendDiscordTest error", err);
-    return res.status(500).json({ success: false, error: err.message || "send_failed" });
+    return res
+      .status(500)
+      .json({ success: false, error: err.message || "send_failed" });
   }
 }
 

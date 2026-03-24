@@ -44,7 +44,13 @@ if (DISCORD_BOT_TOKEN) {
     // Provide minimal intents required by discord.js v14.
     // `Guilds` is useful for basic operations; `GuildMembers` improves lookup by username/tag.
     // `DirectMessages` enables DM channel handling.
-    discordClient = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.DirectMessages] });
+    discordClient = new Client({
+      intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.DirectMessages,
+      ],
+    });
     // Start login but do not await here; if token invalid we'll catch on use
     discordClient.login(DISCORD_BOT_TOKEN).catch((err: any) => {
       // eslint-disable-next-line no-console
@@ -154,7 +160,9 @@ export async function sendSms(
   }
 }
 
-export async function resolveDiscordIdByTag(tag: string): Promise<string | null> {
+export async function resolveDiscordIdByTag(
+  tag: string,
+): Promise<string | null> {
   if (!discordClient) return null;
 
   const cleaned = tag.trim();
@@ -164,18 +172,27 @@ export async function resolveDiscordIdByTag(tag: string): Promise<string | null>
   if (cleaned.includes("#")) {
     const normalizedTag = cleaned
       .split("#")
-      .map((s, idx) => (idx === 0 ? s.trim().replace(/\s+/g, "") : s.replace(/\D/g, "")))
+      .map((s, idx) =>
+        idx === 0 ? s.trim().replace(/\s+/g, "") : s.replace(/\D/g, ""),
+      )
       .join("#");
     console.log("resolveDiscordIdByTag: trying exact # form", normalizedTag);
 
-    const userFromCache = discordClient.users.cache.find((u: any) => u.tag.toLowerCase() === normalizedTag.toLowerCase());
+    const userFromCache = discordClient.users.cache.find(
+      (u: any) => u.tag.toLowerCase() === normalizedTag.toLowerCase(),
+    );
     if (userFromCache) return userFromCache.id;
 
     for (const guild of discordClient.guilds.cache.values()) {
       try {
         const username = normalizedTag.split("#")[0];
-        const members = await guild.members.fetch({ query: username, limit: 5 });
-        const match = members.find((m: any) => m.user.tag.toLowerCase() === normalizedTag.toLowerCase());
+        const members = await guild.members.fetch({
+          query: username,
+          limit: 5,
+        });
+        const match = members.find(
+          (m: any) => m.user.tag.toLowerCase() === normalizedTag.toLowerCase(),
+        );
         if (match) {
           return match.user.id;
         }
@@ -201,16 +218,24 @@ export async function resolveDiscordIdByTag(tag: string): Promise<string | null>
         (u.username + discPart).toLowerCase() === tagWithoutHash.toLowerCase()
       );
     });
-    console.log("resolveDiscordIdByTag:", { candidate: tagWithoutHash, tagWithHash, fromCache: !!userFromCache });
+    console.log("resolveDiscordIdByTag:", {
+      candidate: tagWithoutHash,
+      tagWithHash,
+      fromCache: !!userFromCache,
+    });
     if (userFromCache) return userFromCache.id;
 
     for (const guild of discordClient.guilds.cache.values()) {
       try {
-        const members = await guild.members.fetch({ query: usernamePart, limit: 5 });
+        const members = await guild.members.fetch({
+          query: usernamePart,
+          limit: 5,
+        });
         const match = members.find((m: any) => {
           return (
             m.user.tag.toLowerCase() === tagWithHash.toLowerCase() ||
-            (m.user.username + discPart).toLowerCase() === tagWithoutHash.toLowerCase()
+            (m.user.username + discPart).toLowerCase() ===
+              tagWithoutHash.toLowerCase()
           );
         });
         if (match) return match.user.id;
@@ -226,13 +251,17 @@ export async function resolveDiscordIdByTag(tag: string): Promise<string | null>
   // fallback: username only, ignore discriminator
   const username = cleaned.replace(/\s+/g, "");
   console.log("resolveDiscordIdByTag: fallback username-only lookup", username);
-  const userFromCache = discordClient.users.cache.find((u: any) => u.username.toLowerCase() === username.toLowerCase());
+  const userFromCache = discordClient.users.cache.find(
+    (u: any) => u.username.toLowerCase() === username.toLowerCase(),
+  );
   if (userFromCache) return userFromCache.id;
 
   for (const guild of discordClient.guilds.cache.values()) {
     try {
       const members = await guild.members.fetch({ query: username, limit: 5 });
-      const match = members.find((m: any) => m.user.username.toLowerCase() === username.toLowerCase());
+      const match = members.find(
+        (m: any) => m.user.username.toLowerCase() === username.toLowerCase(),
+      );
       if (match) {
         return match.user.id;
       }
@@ -402,10 +431,14 @@ export async function notifyUserOfEvent(user: User, event: any) {
     "notifyUserOfEvent: user",
     user.email,
     (user as any).phone,
-    "discord_username=", (user as any).discord_username,
-    "discord_tag=", (user as any).discord_tag,
-    "discord_id=", (user as any).discord_id,
-    "discord_verified=", (user as any).discord_verified,
+    "discord_username=",
+    (user as any).discord_username,
+    "discord_tag=",
+    (user as any).discord_tag,
+    "discord_id=",
+    (user as any).discord_id,
+    "discord_verified=",
+    (user as any).discord_verified,
   );
 
   const result: { email?: NotificationResult; sms?: NotificationResult } = {};
@@ -432,7 +465,7 @@ export async function notifyUserOfEvent(user: User, event: any) {
     result.sms = { success: false, skipped: "no_phone" };
   }
 
-    // Discord DM channel: send DM if user has discord_id or username/tag available
+  // Discord DM channel: send DM if user has discord_id or username/tag available
   let targetDiscordId = (user as any).discord_id || null;
   const discordTag = (user as any).discord_tag || null;
 
@@ -440,7 +473,10 @@ export async function notifyUserOfEvent(user: User, event: any) {
 
   if (!targetDiscordId && candidateDiscordTag) {
     // If stored value is username+tag no '#', also attempt the '#' variant for compatibility.
-    if (!candidateDiscordTag.includes("#") && candidateDiscordTag.match(/^(.+?)(\d{4})$/)) {
+    if (
+      !candidateDiscordTag.includes("#") &&
+      candidateDiscordTag.match(/^(.+?)(\d{4})$/)
+    ) {
       // 0026204 -> try 002#6204 as well
       candidateDiscordTag = `${candidateDiscordTag}`;
     }
@@ -449,9 +485,15 @@ export async function notifyUserOfEvent(user: User, event: any) {
   if (!targetDiscordId && candidateDiscordTag) {
     targetDiscordId = await resolveDiscordIdByTag(candidateDiscordTag);
     if (!targetDiscordId && candidateDiscordTag.includes("#")) {
-      targetDiscordId = await resolveDiscordIdByTag(candidateDiscordTag.replace("#", ""));
+      targetDiscordId = await resolveDiscordIdByTag(
+        candidateDiscordTag.replace("#", ""),
+      );
     }
-    if (!targetDiscordId && !candidateDiscordTag.includes("#") && candidateDiscordTag.match(/^(.+?)(\d{4})$/)) {
+    if (
+      !targetDiscordId &&
+      !candidateDiscordTag.includes("#") &&
+      candidateDiscordTag.match(/^(.+?)(\d{4})$/)
+    ) {
       const username = candidateDiscordTag.slice(0, -4);
       const disc = candidateDiscordTag.slice(-4);
       targetDiscordId = await resolveDiscordIdByTag(`${username}#${disc}`);
@@ -461,7 +503,9 @@ export async function notifyUserOfEvent(user: User, event: any) {
     // remains the primary lookup path.
   }
 
-  const discordVerified = Boolean((user as any).discord_verified || targetDiscordId);
+  const discordVerified = Boolean(
+    (user as any).discord_verified || targetDiscordId,
+  );
 
   if (targetDiscordId && discordVerified) {
     try {
@@ -474,8 +518,24 @@ export async function notifyUserOfEvent(user: User, event: any) {
             ).toLocaleString()} (Manila)`,
             color: 5814783,
             fields: [
-              { name: "Status", value: event.status || "upcoming", inline: true },
-              { name: "Hours left", value: String(Math.max(0, Math.ceil((parseStoredDate(event.datetime).getTime() - Date.now()) / (1000 * 60 * 60)))), inline: true },
+              {
+                name: "Status",
+                value: event.status || "upcoming",
+                inline: true,
+              },
+              {
+                name: "Hours left",
+                value: String(
+                  Math.max(
+                    0,
+                    Math.ceil(
+                      (parseStoredDate(event.datetime).getTime() - Date.now()) /
+                        (1000 * 60 * 60),
+                    ),
+                  ),
+                ),
+                inline: true,
+              },
             ],
           },
         ],

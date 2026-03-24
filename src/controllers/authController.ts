@@ -29,15 +29,22 @@ export async function register(req: Request, res: Response) {
   let discordTagForDB: string | null = null;
   let discordInputCandidate = "";
 
-  const providedDiscord = (discord_input || discord_id_or_tag || "").toString().trim();
+  const providedDiscord = (discord_input || discord_id_or_tag || "")
+    .toString()
+    .trim();
   if (providedDiscord) {
     discordInputCandidate = providedDiscord;
   } else if (discord_username) {
     const rawName = String(discord_username).trim().replace(/\s+/g, "");
-    const rawTag = String(discord_tag || "").replace(/\D/g, "").padStart(4, "0").slice(-4);
+    const rawTag = String(discord_tag || "")
+      .replace(/\D/g, "")
+      .padStart(4, "0")
+      .slice(-4);
 
     if (!rawName) {
-      return res.status(400).json({ message: "Discord username must not be empty" });
+      return res
+        .status(400)
+        .json({ message: "Discord username must not be empty" });
     }
 
     discordInputCandidate = rawTag ? `${rawName}${rawTag}` : rawName;
@@ -86,7 +93,9 @@ export async function register(req: Request, res: Response) {
     console.error("Register error:", err);
     if (err?.code === "23505") {
       // Postgres unique_violation
-      return res.status(409).json({ message: "An account with this email already exists" });
+      return res
+        .status(409)
+        .json({ message: "An account with this email already exists" });
     }
     return res.status(500).json({ message: "Internal Server Error" });
   }
