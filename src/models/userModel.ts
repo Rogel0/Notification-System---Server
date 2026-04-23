@@ -70,3 +70,34 @@ export async function updateDiscordInfo(
     values,
   );
 }
+
+export async function updateUserProfile(
+  id: number,
+  email?: string | null,
+  phone?: string | null,
+  name?: string | null,
+): Promise<void> {
+  const fields: string[] = [];
+  const values: any[] = [];
+
+  if (typeof email !== "undefined") {
+    fields.push(`email = $${fields.length + 1}`);
+    values.push(email);
+  }
+  if (typeof phone !== "undefined") {
+    fields.push(`phone = $${fields.length + 1}`);
+    values.push(phone);
+  }
+  if (typeof name !== "undefined") {
+    fields.push(`name = $${fields.length + 1}`);
+    values.push(name);
+  }
+
+  if (fields.length === 0) return;
+
+  values.push(id);
+  await pool.query(
+    `UPDATE users SET ${fields.join(", ")} WHERE id = $${values.length}`,
+    values,
+  );
+}

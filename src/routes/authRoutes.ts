@@ -4,6 +4,7 @@ import {
   login,
   profile,
   logout,
+  updateProfile,
 } from "../controllers/authController";
 import { resolveDiscordIdByTag, sendDiscordDm } from "../utils/notification";
 import { authMiddleware } from "../db/middleware/authMiddleware";
@@ -14,6 +15,10 @@ router.post("/register", register);
 router.post("/login", login);
 router.post("/logout", logout);
 router.get("/profile", authMiddleware, profile);
+router.put("/profile", authMiddleware, updateProfile);
+// Backward-compatible aliases (mounted at /api/auth/profile)
+router.get("/auth/profile", authMiddleware, profile);
+router.put("/auth/profile", authMiddleware, updateProfile);
 
 // Testing endpoints for Discord lookup + DM are available without auth for local/dev.
 // Remove or protect in production if necessary.
