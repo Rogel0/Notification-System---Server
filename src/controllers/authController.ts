@@ -39,6 +39,7 @@ export async function register(req: Request, res: Response) {
   // handle discord ID or username/discriminator input (single field preferred)
   let discordId: string | null = null;
   let discordTagForDB: string | null = null;
+  let discordUsernameForDB: string | null = null;
   let discordInputCandidate = "";
 
   const providedDiscord = (discord_input || discord_id_or_tag || "")
@@ -69,17 +70,20 @@ export async function register(req: Request, res: Response) {
       // keep only the ID upfront; also set tag text from username+tag if available
       if (normalized.discordUsername && normalized.discordTag) {
         discordTagForDB = `${normalized.discordUsername}${normalized.discordTag}`;
+        discordUsernameForDB = normalized.discordUsername;
       }
     } else if (normalized.discordUsername && normalized.discordTag) {
       // store combined no-hash value for backward compatibility
       discordTagForDB = `${normalized.discordUsername}${normalized.discordTag}`;
+      discordUsernameForDB = normalized.discordUsername;
     } else if (normalized.discordUsername) {
       discordTagForDB = normalized.discordUsername;
+      discordUsernameForDB = normalized.discordUsername;
     } else if (normalized.discordTag) {
       discordTagForDB = normalized.discordTag;
     }
 
-    if (!discordId && !discordTagForDB) {
+    if (!discordId && !discordTagForDB && !discordUsernameForDB) {
       return res.status(400).json({
         message:
           "Discord input must be a numeric Discord ID (17-20 digits), username1234 (preferred), or username#1234",
@@ -96,7 +100,7 @@ export async function register(req: Request, res: Response) {
       phone || null,
       discordId,
       discordTagForDB,
-      null,
+      discordUsernameForDB,
     );
     return res.status(201).json({ message: "User registered" });
   } catch (err: any) {

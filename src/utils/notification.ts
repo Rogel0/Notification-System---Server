@@ -468,35 +468,39 @@ export async function notifyUserOfEvent(user: User, event: any) {
   // Discord DM channel: send DM if user has discord_id or username/tag available
   let targetDiscordId = (user as any).discord_id || null;
   const discordTag = (user as any).discord_tag || null;
+  const discordUsername = (user as any).discord_username || null;
 
-  let candidateDiscordTag = discordTag;
+  const discordLookupCandidates = Array.from(
+    new Set(
+      [
+        discordTag,
+        discordUsername,
+        discordUsername && discordTag && /^\d{4}$/.test(discordTag)
+          ? `${discordUsername}#${discordTag}`
+          : null,
+        discordUsername && discordTag && /^\d{4}$/.test(discordTag)
+          ? `${discordUsername}${discordTag}`
+          : null,
+      ].filter(Boolean),
+    ),
+  ) as string[];
 
-  if (!targetDiscordId && candidateDiscordTag) {
-    // If stored value is username+tag no '#', also attempt the '#' variant for compatibility.
-    if (
-      !candidateDiscordTag.includes("#") &&
-      candidateDiscordTag.match(/^(.+?)(\d{4})$/)
-    ) {
-      // 0026204 -> try 002#6204 as well
-      candidateDiscordTag = `${candidateDiscordTag}`;
-    }
-  }
+  if (!targetDiscordId) {
+    for (const candidate of discordLookupCandidates) {
+      targetDiscordId = await resolveDiscordIdByTag(candidate);
+      if (targetDiscordId) break;
 
-  if (!targetDiscordId && candidateDiscordTag) {
-    targetDiscordId = await resolveDiscordIdByTag(candidateDiscordTag);
-    if (!targetDiscordId && candidateDiscordTag.includes("#")) {
-      targetDiscordId = await resolveDiscordIdByTag(
-        candidateDiscordTag.replace("#", ""),
-      );
-    }
-    if (
-      !targetDiscordId &&
-      !candidateDiscordTag.includes("#") &&
-      candidateDiscordTag.match(/^(.+?)(\d{4})$/)
-    ) {
-      const username = candidateDiscordTag.slice(0, -4);
-      const disc = candidateDiscordTag.slice(-4);
-      targetDiscordId = await resolveDiscordIdByTag(`${username}#${disc}`);
+      if (candidate.includes("#")) {
+        targetDiscordId = await resolveDiscordIdByTag(candidate.replace("#", ""));
+        if (targetDiscordId) break;
+      }
+
+      if (!candidate.includes("#") && candidate.match(/^(.+?)(\d{4})$/)) {
+        const username = candidate.slice(0, -4);
+        const disc = candidate.slice(-4);
+        targetDiscordId = await resolveDiscordIdByTag(`${username}#${disc}`);
+        if (targetDiscordId) break;
+      }
     }
 
     // Intentionally do not persist resolved discord_id here so username/tag
