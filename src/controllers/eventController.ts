@@ -233,10 +233,19 @@ export async function getEvent(req: Request, res: Response) {
 export async function completeEvent(req: Request, res: Response) {
   const userId = (req as any).userId as number;
   const eventId = Number(req.params.id);
-  const event = await getEventById(eventId, userId);
-  if (!event) return res.status(404).json({ message: "Event not found" });
 
-  await updateEventStatus(eventId, "completed");
-  await cancelJobsForEvent(eventId, "event_completed");
-  res.json({ message: "Event marked completed" });
+  try {
+    const event = await getEventById(eventId, userId);
+    if (!event) return res.status(404).json({ message: "Event not found" });
+
+    await updateEventStatus(eventId, "completed");
+    await cancelJobsForEvent(eventId, "event_completed");
+    res.json({ message: "Event marked completed" });
+  } catch (err) {
+    console.error("completeEvent error:", err);
+    res.status(500).json({
+      message: "Failed to mark event as completed",
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
