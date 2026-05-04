@@ -49,6 +49,7 @@ export async function previewEvent(req: Request, res: Response) {
         "3_days_before",
         "24_hours_before",
         "3_hours_before",
+        "1_hour_before",
         "15_minutes_before",
         "exact",
         "missed_10_minutes",

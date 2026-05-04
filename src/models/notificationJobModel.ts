@@ -5,6 +5,7 @@ const scheduleWindows = [
   { stage: "3_days_before", offsetMillis: 1000 * 60 * 60 * 24 * 3 },
   { stage: "24_hours_before", offsetMillis: 1000 * 60 * 60 * 24 },
   { stage: "3_hours_before", offsetMillis: 1000 * 60 * 60 * 3 },
+  { stage: "1_hour_before", offsetMillis: 1000 * 60 * 60 },
   { stage: "15_minutes_before", offsetMillis: 1000 * 60 * 15 },
   { stage: "exact", offsetMillis: 0 },
 ];

@@ -374,6 +374,7 @@ export function buildDiscordEventPayload(
       "3_days_before": { name: "Time left", value: "3 days" },
       "24_hours_before": { name: "Time left", value: "24 hours" },
       "3_hours_before": { name: "Time left", value: "3 hours" },
+      "1_hour_before": { name: "Time left", value: "1 hour" },
       "15_minutes_before": { name: "Time left", value: "15 minutes" },
       exact: { name: "Time left", value: "now" },
       missed_10_minutes: { name: "Missed by", value: "10 minutes" },
