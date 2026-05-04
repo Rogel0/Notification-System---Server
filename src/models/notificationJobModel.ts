@@ -9,6 +9,12 @@ const scheduleWindows = [
   { stage: "exact", offsetMillis: 0 },
 ];
 
+const missedWindows = [
+  { stage: "missed_10_minutes", offsetMillis: 1000 * 60 * 10 },
+  { stage: "missed_1_hour", offsetMillis: 1000 * 60 * 60 },
+  { stage: "missed_24_hours", offsetMillis: 1000 * 60 * 60 * 24 },
+];
+
 function parseStoredDate(datetime: string | Date): Date {
   if (datetime instanceof Date) return datetime;
   const s = String(datetime).trim();
@@ -51,17 +57,25 @@ export async function createOrUpdateJobsForEvent(
   const eventDate = parseStoredDate(event.datetime);
   const eventMillis = eventDate.getTime();
   const now = opts?.now ?? new Date();
-  const pastToleranceMs = opts?.pastToleranceMs ?? 1000 * 60; // 1 minute
 
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    for (const win of scheduleWindows) {
-      const runAtMillis = eventMillis - win.offsetMillis;
-      // If the run time is already in the past (<= now) do not schedule this stage.
-      // This enforces the requirement to only schedule the specified windows
-      // when they are strictly in the future.
-      if (runAtMillis <= now.getTime()) {
+    const allWindows = [
+      ...scheduleWindows.map((win) => ({
+        ...win,
+        runAtMillis: eventMillis - win.offsetMillis,
+      })),
+      ...missedWindows.map((win) => ({
+        ...win,
+        runAtMillis: eventMillis + win.offsetMillis,
+      })),
+    ];
+
+    for (const win of allWindows) {
+      // Keep only future pending jobs. Past stages are handled by the fallback scan
+      // or already represented in notified/cancelled job state.
+      if (win.runAtMillis <= now.getTime()) {
         // Remove any existing pending job for this stage to avoid accidental execution.
         await client.query(
           `DELETE FROM notification_jobs WHERE event_id = $1 AND stage = $2 AND status = 'pending'`,
@@ -70,7 +84,7 @@ export async function createOrUpdateJobsForEvent(
         continue;
       }
 
-      const runAt = new Date(runAtMillis).toISOString();
+      const runAt = new Date(win.runAtMillis).toISOString();
       await client.query(
         `INSERT INTO notification_jobs (event_id, stage, run_at)
          VALUES ($1, $2, $3)
