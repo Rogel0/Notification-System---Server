@@ -72,6 +72,7 @@ export type NotificationResult = {
 
 type NotifyUserOfEventOptions = {
   sendDiscord?: boolean;
+  stage?: string;
 };
 
 export async function sendEmail(
@@ -465,19 +466,25 @@ export function buildEventEmailHtml(
     timeStyle: "short",
     timeZone: "Asia/Manila",
   }).format(eventDateObj);
-  const computeHoursLeft = () => {
+  const computeTimeLeft = () => {
     try {
-      const diff =
-        (parseStoredDate(event.datetime).getTime() - Date.now()) /
-        (1000 * 60 * 60);
-      // Return integer hours (round up) with no decimal places so emails don't show fractional hours
-      return Math.max(0, Math.ceil(diff));
+      const diffMs = parseStoredDate(event.datetime).getTime() - Date.now();
+      const diffMinutes = Math.ceil(diffMs / (1000 * 60));
+      const diffHours = Math.ceil(diffMs / (1000 * 60 * 60));
+
+      // Return object with both unit and value for flexibility
+      if (diffMinutes < 60) {
+        return { value: Math.max(0, diffMinutes), unit: "minutes" };
+      } else {
+        return { value: Math.max(0, diffHours), unit: "hours" };
+      }
     } catch {
-      return 0;
+      return { value: 0, unit: "hours" };
     }
   };
 
-  const hoursLeft = computeHoursLeft();
+  const timeLeft = computeTimeLeft();
+  const timeString = `${timeLeft.value} ${timeLeft.unit}`;
 
   const messageParagraph = messageBody
     ? `<p>${messageBody}</p>`
@@ -489,10 +496,10 @@ export function buildEventEmailHtml(
           : `<p>Urgent Reminder: You missed your business trip on ${eventTime}.</p>`
       : // upcoming
         event.type === "Deadline"
-        ? `<p>Reminder: You have a deadline on ${eventTime}. You have ${hoursLeft} hours left before deadline.</p>`
+        ? `<p>Reminder: You have a deadline on ${eventTime}. You have ${timeString} left before deadline.</p>`
         : event.type === "Meeting"
-          ? `<p>Reminder: You have a meeting on ${eventTime}. You have ${hoursLeft} hours left before the meeting.</p>`
-          : `<p>Reminder: You have a business trip on ${eventTime}. You have ${hoursLeft} hours left before the trip.</p>`;
+          ? `<p>Reminder: You have a meeting on ${eventTime}. You have ${timeString} left before the meeting.</p>`
+          : `<p>Reminder: You have a business trip on ${eventTime}. You have ${timeString} left before the trip.</p>`;
 
   return `
   <!DOCTYPE html>
@@ -622,7 +629,9 @@ export async function notifyUserOfEvent(
     const targetDiscordId = await resolveDiscordRecipientId(user);
     if (targetDiscordId) {
       try {
-        const discordPayload = buildDiscordEventPayload(event);
+        const discordPayload = buildDiscordEventPayload(event, {
+          stage: opts?.stage,
+        });
         const discordRes = await sendDiscordDm(targetDiscordId, discordPayload);
         // attach to result
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment

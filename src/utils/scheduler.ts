@@ -279,7 +279,17 @@ function getDueSteps(event: Event, now: Date) {
         passed.push({ stage: win.stage, trigger });
       }
     }
-    if (passed.length === 0) return [];
+
+    // If no predefined stage is due, check if event is within 15 minutes
+    if (passed.length === 0) {
+      const diffMs = eventMillis - nowMillis;
+      if (diffMs > 0 && diffMs < 1000 * 60 * 15) {
+        const diffMinutes = Math.ceil(diffMs / (1000 * 60));
+        return [`${diffMinutes}_minutes`];
+      }
+      return [];
+    }
+
     // choose the one with the greatest trigger (closest to now)
     passed.sort((a, b) => b.trigger - a.trigger);
     return [passed[0].stage];

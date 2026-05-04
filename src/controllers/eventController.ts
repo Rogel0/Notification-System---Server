@@ -182,10 +182,11 @@ export async function addEvent(req: Request, res: Response) {
     } else {
       console.log("Event created", newEvent);
       console.log("Notifying user", user.email, (user as any).phone);
+      const nextStage = getNextReminderStage(newEvent.datetime);
       notificationStatus = await notification.notifyUserOfEvent(
         user,
         newEvent,
-        { sendDiscord: false },
+        { sendDiscord: false, stage: nextStage },
       );
       console.log(
         "notifyUserOfEvent called for event",
