@@ -112,7 +112,11 @@ export async function addEvent(req: Request, res: Response) {
     } else {
       console.log("Event created", newEvent);
       console.log("Notifying user", user.email, (user as any).phone);
-      notificationStatus = await notification.notifyUserOfEvent(user, newEvent);
+      notificationStatus = await notification.notifyUserOfEvent(
+        user,
+        newEvent,
+        { sendDiscord: false },
+      );
       console.log(
         "notifyUserOfEvent called for event",
         newEvent.id,

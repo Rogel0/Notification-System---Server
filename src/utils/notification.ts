@@ -70,6 +70,10 @@ export type NotificationResult = {
   skipped?: string;
 };
 
+type NotifyUserOfEventOptions = {
+  sendDiscord?: boolean;
+};
+
 export async function sendEmail(
   to: string,
   subject: string,
@@ -529,7 +533,11 @@ export function buildEventEmailHtml(
   `;
 }
 
-export async function notifyUserOfEvent(user: User, event: any) {
+export async function notifyUserOfEvent(
+  user: User,
+  event: any,
+  opts?: NotifyUserOfEventOptions,
+) {
   const subject = `New ${event.type} scheduled: ${event.title}`;
   const text = `Your ${event.type} "${event.title}" is scheduled for ${new Date(
     event.datetime,
@@ -574,26 +582,32 @@ export async function notifyUserOfEvent(user: User, event: any) {
     result.sms = { success: false, skipped: "no_phone" };
   }
 
-  const targetDiscordId = await resolveDiscordRecipientId(user);
-  if (targetDiscordId) {
-    try {
-      const discordPayload = buildDiscordEventPayload(event);
-      const discordRes = await sendDiscordDm(targetDiscordId, discordPayload);
-      // attach to result
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      result.discord = discordRes;
-    } catch (e) {
-      // eslint-disable-next-line no-console
-      console.warn("notifyUserOfEvent: discord send failed", e);
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      result.discord = { success: false, error: "discord_send_failed" };
-    }
-  } else {
+  if (opts?.sendDiscord === false) {
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
-    result.discord = { success: false, skipped: "no_discord" };
+    result.discord = { success: false, skipped: "discord_disabled_for_event_created" };
+  } else {
+    const targetDiscordId = await resolveDiscordRecipientId(user);
+    if (targetDiscordId) {
+      try {
+        const discordPayload = buildDiscordEventPayload(event);
+        const discordRes = await sendDiscordDm(targetDiscordId, discordPayload);
+        // attach to result
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        result.discord = discordRes;
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn("notifyUserOfEvent: discord send failed", e);
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        result.discord = { success: false, error: "discord_send_failed" };
+      }
+    } else {
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      result.discord = { success: false, skipped: "no_discord" };
+    }
   }
 
   return result;
