@@ -347,7 +347,9 @@ export async function resolveDiscordRecipientId(
       if (targetDiscordId) break;
 
       if (candidate.includes("#")) {
-        targetDiscordId = await resolveDiscordIdByTag(candidate.replace("#", ""));
+        targetDiscordId = await resolveDiscordIdByTag(
+          candidate.replace("#", ""),
+        );
         if (targetDiscordId) break;
       }
 
@@ -407,7 +409,23 @@ export function buildDiscordEventPayload(
         title: `${event.type} Reminder: ${event.title}`,
         description:
           opts?.description ||
-          `${event.type} scheduled at ${new Date(event.datetime).toLocaleString()} (Manila)`,
+          // Format the event time explicitly for Asia/Manila so Discord shows
+          // the same friendly time as emails and the scheduler.
+          (() => {
+            try {
+              const ev = parseStoredDate(event.datetime);
+              return `${event.type} scheduled at ${new Intl.DateTimeFormat(
+                "en-US",
+                {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                  timeZone: "Asia/Manila",
+                },
+              ).format(ev)} (Manila)`;
+            } catch {
+              return `${event.type} scheduled at ${new Date(event.datetime).toLocaleString()} (Manila)`;
+            }
+          })(),
         color: 5814783,
         fields: [
           {
@@ -586,7 +604,10 @@ export async function notifyUserOfEvent(
   if (opts?.sendDiscord === false) {
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
-    result.discord = { success: false, skipped: "discord_disabled_for_event_created" };
+    result.discord = {
+      success: false,
+      skipped: "discord_disabled_for_event_created",
+    };
   } else {
     const targetDiscordId = await resolveDiscordRecipientId(user);
     if (targetDiscordId) {
