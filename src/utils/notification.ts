@@ -312,6 +312,91 @@ export async function sendDiscordDm(
   }
 }
 
+export async function resolveDiscordRecipientId(
+  user: Pick<
+    User,
+    "discord_id" | "discord_tag" | "discord_username" | "discord_verified"
+  >,
+): Promise<string | null> {
+  let targetDiscordId = user.discord_id || null;
+  const discordTag = user.discord_tag || null;
+  const discordUsername = user.discord_username || null;
+
+  const discordLookupCandidates = Array.from(
+    new Set(
+      [
+        discordTag,
+        discordUsername,
+        discordUsername && discordTag && /^\d{4}$/.test(discordTag)
+          ? `${discordUsername}#${discordTag}`
+          : null,
+        discordUsername && discordTag && /^\d{4}$/.test(discordTag)
+          ? `${discordUsername}${discordTag}`
+          : null,
+      ].filter(Boolean),
+    ),
+  ) as string[];
+
+  if (!targetDiscordId) {
+    for (const candidate of discordLookupCandidates) {
+      targetDiscordId = await resolveDiscordIdByTag(candidate);
+      if (targetDiscordId) break;
+
+      if (candidate.includes("#")) {
+        targetDiscordId = await resolveDiscordIdByTag(candidate.replace("#", ""));
+        if (targetDiscordId) break;
+      }
+
+      if (!candidate.includes("#") && candidate.match(/^(.+?)(\d{4})$/)) {
+        const username = candidate.slice(0, -4);
+        const disc = candidate.slice(-4);
+        targetDiscordId = await resolveDiscordIdByTag(`${username}#${disc}`);
+        if (targetDiscordId) break;
+      }
+    }
+  }
+
+  const discordVerified = Boolean(user.discord_verified || targetDiscordId);
+  return discordVerified ? targetDiscordId : null;
+}
+
+export function buildDiscordEventPayload(
+  event: any,
+  opts?: { status?: string; description?: string },
+) {
+  return {
+    embeds: [
+      {
+        title: `${event.type} Reminder: ${event.title}`,
+        description:
+          opts?.description ||
+          `${event.type} scheduled at ${new Date(event.datetime).toLocaleString()} (Manila)`,
+        color: 5814783,
+        fields: [
+          {
+            name: "Status",
+            value: opts?.status || event.status || "upcoming",
+            inline: true,
+          },
+          {
+            name: "Hours left",
+            value: String(
+              Math.max(
+                0,
+                Math.ceil(
+                  (parseStoredDate(event.datetime).getTime() - Date.now()) /
+                    (1000 * 60 * 60),
+                ),
+              ),
+            ),
+            inline: true,
+          },
+        ],
+      },
+    ],
+  };
+}
+
 export function buildEventEmailHtml(
   user: User,
   event: any,
@@ -465,85 +550,10 @@ export async function notifyUserOfEvent(user: User, event: any) {
     result.sms = { success: false, skipped: "no_phone" };
   }
 
-  // Discord DM channel: send DM if user has discord_id or username/tag available
-  let targetDiscordId = (user as any).discord_id || null;
-  const discordTag = (user as any).discord_tag || null;
-  const discordUsername = (user as any).discord_username || null;
-
-  const discordLookupCandidates = Array.from(
-    new Set(
-      [
-        discordTag,
-        discordUsername,
-        discordUsername && discordTag && /^\d{4}$/.test(discordTag)
-          ? `${discordUsername}#${discordTag}`
-          : null,
-        discordUsername && discordTag && /^\d{4}$/.test(discordTag)
-          ? `${discordUsername}${discordTag}`
-          : null,
-      ].filter(Boolean),
-    ),
-  ) as string[];
-
-  if (!targetDiscordId) {
-    for (const candidate of discordLookupCandidates) {
-      targetDiscordId = await resolveDiscordIdByTag(candidate);
-      if (targetDiscordId) break;
-
-      if (candidate.includes("#")) {
-        targetDiscordId = await resolveDiscordIdByTag(candidate.replace("#", ""));
-        if (targetDiscordId) break;
-      }
-
-      if (!candidate.includes("#") && candidate.match(/^(.+?)(\d{4})$/)) {
-        const username = candidate.slice(0, -4);
-        const disc = candidate.slice(-4);
-        targetDiscordId = await resolveDiscordIdByTag(`${username}#${disc}`);
-        if (targetDiscordId) break;
-      }
-    }
-
-    // Intentionally do not persist resolved discord_id here so username/tag
-    // remains the primary lookup path.
-  }
-
-  const discordVerified = Boolean(
-    (user as any).discord_verified || targetDiscordId,
-  );
-
-  if (targetDiscordId && discordVerified) {
+  const targetDiscordId = await resolveDiscordRecipientId(user);
+  if (targetDiscordId) {
     try {
-      const discordPayload = {
-        embeds: [
-          {
-            title: `${event.type} Reminder: ${event.title}`,
-            description: `${event.type} scheduled at ${new Date(
-              event.datetime,
-            ).toLocaleString()} (Manila)`,
-            color: 5814783,
-            fields: [
-              {
-                name: "Status",
-                value: event.status || "upcoming",
-                inline: true,
-              },
-              {
-                name: "Hours left",
-                value: String(
-                  Math.max(
-                    0,
-                    Math.ceil(
-                      (parseStoredDate(event.datetime).getTime() - Date.now()) /
-                        (1000 * 60 * 60),
-                    ),
-                  ),
-                ),
-                inline: true,
-              },
-            ],
-          },
-        ],
-      };
+      const discordPayload = buildDiscordEventPayload(event);
       const discordRes = await sendDiscordDm(targetDiscordId, discordPayload);
       // attach to result
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment

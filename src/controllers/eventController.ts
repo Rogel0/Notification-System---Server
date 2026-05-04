@@ -6,7 +6,10 @@ import {
   updateEventStatus,
 } from "../models/eventModel";
 import { parseStoredDate } from "../utils/scheduler";
-import { createOrUpdateJobsForEvent } from "../models/notificationJobModel";
+import {
+  cancelJobsForEvent,
+  createOrUpdateJobsForEvent,
+} from "../models/notificationJobModel";
 import { findUserById } from "../models/userModel";
 import notification, { NotificationResult } from "../utils/notification";
 
@@ -149,5 +152,6 @@ export async function completeEvent(req: Request, res: Response) {
   if (!event) return res.status(404).json({ message: "Event not found" });
 
   await updateEventStatus(eventId, "completed");
+  await cancelJobsForEvent(eventId, "event_completed");
   res.json({ message: "Event marked completed" });
 }

@@ -6,13 +6,20 @@ import {
   getEventByIdAdmin,
 } from "../models/eventModel";
 import { findUserById } from "../models/userModel";
-import notification, { buildEventEmailHtml } from "./notification";
+import notification, {
+  buildDiscordEventPayload,
+  buildEventEmailHtml,
+  resolveDiscordRecipientId,
+} from "./notification";
 import {
+  cancelJob,
+  cancelJobsForEvent,
   getDueJobs,
   markJobAttempt,
   createOrUpdateJobsForEvent,
   pruneStalePendingJobs,
 } from "../models/notificationJobModel";
+import { User } from "../types/user";
 
 const scheduleWindows = [
   { stage: "3_days_before", offsetMillis: 1000 * 60 * 60 * 24 * 3 },
@@ -179,6 +186,70 @@ function inWindow(trigger: number, now: number, windowMillis = 1000 * 60) {
   return now >= trigger && now < trigger + windowMillis;
 }
 
+async function sendReminderNotifications(
+  user: User,
+  event: Event,
+  stage: string,
+  message: { subject: string; text: string; html?: string },
+) {
+  const derivedStatus =
+    event.status === "missed" || stage.startsWith("missed")
+      ? "missed"
+      : "upcoming";
+  const html = buildEventEmailHtml(
+    user,
+    {
+      ...event,
+      status: derivedStatus,
+    },
+    message.text,
+  );
+
+  let emailResult: any = { success: false, skipped: "no_email" };
+  if (user.email) {
+    try {
+      emailResult = await notification.sendEmail(
+        user.email,
+        message.subject,
+        message.text,
+        html,
+      );
+    } catch (err) {
+      console.error("Scheduler: sendEmail threw", err);
+      emailResult = { success: false, error: String(err) };
+    }
+  }
+
+  let smsResult: any = { success: false, skipped: "no_phone" };
+  if ((user as any).phone) {
+    try {
+      smsResult = await notification.sendSms((user as any).phone, message.text);
+    } catch (err) {
+      console.error("Scheduler: sendSms threw", err);
+      smsResult = { success: false, error: String(err) };
+    }
+  }
+
+  let discordResult: any = { success: false, skipped: "no_discord" };
+  try {
+    const targetDiscordId = await resolveDiscordRecipientId(user);
+    if (targetDiscordId) {
+      discordResult = await notification.sendDiscordDm(
+        targetDiscordId,
+        buildDiscordEventPayload(
+          { ...event, status: derivedStatus },
+          { status: derivedStatus, description: message.text },
+        ),
+      );
+    }
+  } catch (err) {
+    console.error("Scheduler: sendDiscordDm threw", err);
+    discordResult = { success: false, error: String(err) };
+  }
+
+  return { emailResult, smsResult, discordResult };
+}
+
 function getDueSteps(event: Event, now: Date) {
   const eventDate = parseStoredDate(event.datetime);
   const nowMillis = now.getTime();
@@ -231,55 +302,16 @@ export async function processEvent(event: Event, now: Date) {
   const actuallySent: string[] = [];
   for (const stage of stagesToSend) {
     const message = getReminderMessage(event, stage);
-    const html = buildEventEmailHtml(
-      user,
-      {
-        ...event,
-        status:
-          event.status === "missed" || stage.startsWith("missed")
-            ? "missed"
-            : "upcoming",
-      },
-      message.text,
-    );
-
-    let emailResult: any = { success: false, skipped: "no_email" };
-    if (user.email) {
-      try {
-        emailResult = await notification.sendEmail(
-          user.email,
-          message.subject,
-          message.text,
-          html,
-        );
-      } catch (err) {
-        console.error("Scheduler: sendEmail threw", err);
-      }
-    }
-
-    let smsResult: any = { success: false, skipped: "no_phone" };
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    if ((user as any).phone) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        smsResult = await notification.sendSms(
-          (user as any).phone,
-          message.text,
-        );
-      } catch (err) {
-        console.error("Scheduler: sendSms threw", err);
-      }
-    }
+    const { emailResult, smsResult, discordResult } =
+      await sendReminderNotifications(user, event, stage, message);
 
     // Log outcomes
     console.log(
-      `Scheduler: attempt ${stage} for event ${event.id} (${event.title}) => email:${emailResult?.success ? "ok" : emailResult?.skipped || emailResult?.error || "failed"} sms:${smsResult?.success ? "ok" : smsResult?.skipped || smsResult?.error || "failed"}`,
+      `Scheduler: attempt ${stage} for event ${event.id} (${event.title}) => email:${emailResult?.success ? "ok" : emailResult?.skipped || emailResult?.error || "failed"} sms:${smsResult?.success ? "ok" : smsResult?.skipped || smsResult?.error || "failed"} discord:${discordResult?.success ? "ok" : discordResult?.skipped || discordResult?.error || "failed"}`,
     );
 
     // Mark stage as notified only if at least one channel succeeded
-    if (emailResult?.success || smsResult?.success) {
+    if (emailResult?.success || smsResult?.success || discordResult?.success) {
       actuallySent.push(stage);
     }
   }
@@ -318,7 +350,8 @@ export async function processDueJobs(now: Date): Promise<void> {
   try {
     const jobs = await getDueJobs(500);
 
-    // Group jobs by event_id and keep only the job with the latest run_at per event.
+    // Group jobs by event_id and keep only the latest due job per event.
+    // Older due jobs are explicitly cancelled as superseded instead of left pending.
     const latestJobByEvent = new Map<number, any>();
     for (const job of jobs) {
       const existing = latestJobByEvent.get(job.event_id);
@@ -329,7 +362,10 @@ export async function processDueJobs(now: Date): Promise<void> {
       const existingTime = new Date(existing.run_at).getTime();
       const thisTime = new Date(job.run_at).getTime();
       if (thisTime > existingTime) {
+        await cancelJob(existing.id, "superseded_by_later_due_stage");
         latestJobByEvent.set(job.event_id, job);
+      } else {
+        await cancelJob(job.id, "superseded_by_later_due_stage");
       }
     }
 
@@ -337,7 +373,12 @@ export async function processDueJobs(now: Date): Promise<void> {
       try {
         const event = await getEventByIdAdmin(job.event_id);
         if (!event) {
-          await markJobAttempt(job.id, false, "event_not_found");
+          await cancelJob(job.id, "event_not_found");
+          continue;
+        }
+
+        if (event.status === "completed") {
+          await cancelJobsForEvent(event.id, "event_completed");
           continue;
         }
 
@@ -348,51 +389,14 @@ export async function processDueJobs(now: Date): Promise<void> {
         }
 
         const message = getReminderMessage(event, job.stage);
-        const html = buildEventEmailHtml(
-          user,
-          {
-            ...event,
-            status:
-              event.status === "missed" || job.stage.startsWith("missed")
-                ? "missed"
-                : "upcoming",
-          },
-          message.text,
+        const { emailResult, smsResult, discordResult } =
+          await sendReminderNotifications(user, event, job.stage, message);
+
+        const success = !!(
+          emailResult?.success ||
+          smsResult?.success ||
+          discordResult?.success
         );
-
-        let emailResult: any = { success: false, skipped: "no_email" };
-        if (user.email) {
-          try {
-            emailResult = await notification.sendEmail(
-              user.email,
-              message.subject,
-              message.text,
-              html,
-            );
-          } catch (err) {
-            console.error("Scheduler job sendEmail threw", err);
-            emailResult = { success: false, error: String(err) };
-          }
-        }
-
-        let smsResult: any = { success: false, skipped: "no_phone" };
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        if ((user as any).phone) {
-          try {
-            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-            // @ts-ignore
-            smsResult = await notification.sendSms(
-              (user as any).phone,
-              message.text,
-            );
-          } catch (err) {
-            console.error("Scheduler job sendSms threw", err);
-            smsResult = { success: false, error: String(err) };
-          }
-        }
-
-        const success = !!(emailResult?.success || smsResult?.success);
         if (success) {
           // mark event notified_stages
           const nextStages = Array.from(
@@ -406,7 +410,10 @@ export async function processDueJobs(now: Date): Promise<void> {
           success,
           success
             ? undefined
-            : emailResult?.error || smsResult?.error || "unknown",
+            : emailResult?.error ||
+                smsResult?.error ||
+                discordResult?.error ||
+                "unknown",
         );
 
         if (

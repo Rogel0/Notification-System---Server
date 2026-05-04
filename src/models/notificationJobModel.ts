@@ -137,6 +137,30 @@ export async function markJobAttempt(
   );
 }
 
+export async function cancelJob(
+  jobId: number,
+  reason = "cancelled",
+): Promise<void> {
+  await pool.query(
+    `UPDATE notification_jobs
+     SET status = 'cancelled', last_error = $2, updated_at = NOW()
+     WHERE id = $1`,
+    [jobId, reason],
+  );
+}
+
+export async function cancelJobsForEvent(
+  eventId: number,
+  reason = "event_completed",
+): Promise<void> {
+  await pool.query(
+    `UPDATE notification_jobs
+     SET status = 'cancelled', last_error = $2, updated_at = NOW()
+     WHERE event_id = $1 AND status = 'pending'`,
+    [eventId, reason],
+  );
+}
+
 export async function getJobsForEvent(eventId: number): Promise<any[]> {
   const res = await pool.query(
     "SELECT * FROM notification_jobs WHERE event_id = $1 ORDER BY run_at ASC",
