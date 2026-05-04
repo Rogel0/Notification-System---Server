@@ -168,7 +168,7 @@ export function getReminderMessage(
   }
 
   let nominal = stageLabels[stage];
-  
+
   // Handle dynamic minute stages like "13_minutes"
   if (!nominal) {
     const minuteMatch = stage.match(/^(\d+)_minutes$/);
