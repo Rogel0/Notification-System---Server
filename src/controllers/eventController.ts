@@ -238,8 +238,21 @@ export async function completeEvent(req: Request, res: Response) {
     const event = await getEventById(eventId, userId);
     if (!event) return res.status(404).json({ message: "Event not found" });
 
+    // Mark as completed
     await updateEventStatus(eventId, "completed");
-    await cancelJobsForEvent(eventId, "event_completed");
+
+    // Cancel pending jobs (best effort - don't fail the request if this errors)
+    try {
+      await cancelJobsForEvent(eventId, "event_completed");
+    } catch (jobErr) {
+      console.warn(
+        "Warning: Failed to cancel notification jobs for event",
+        eventId,
+        jobErr,
+      );
+      // Continue anyway - the event is already marked completed
+    }
+
     res.json({ message: "Event marked completed" });
   } catch (err) {
     console.error("completeEvent error:", err);
