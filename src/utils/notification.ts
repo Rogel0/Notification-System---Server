@@ -388,6 +388,16 @@ export function buildDiscordEventPayload(
       return stageLabels[stage];
     }
 
+    // Handle dynamic minute stages like "13_minutes"
+    const minuteMatch = stage.match(/^(\d+)_minutes$/);
+    if (minuteMatch) {
+      const minutes = minuteMatch[1];
+      return {
+        name: "Time left",
+        value: `${minutes} minutes`,
+      };
+    }
+
     const hoursLeft = Math.max(
       0,
       Math.ceil(

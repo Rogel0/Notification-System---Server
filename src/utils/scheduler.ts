@@ -167,7 +167,17 @@ export function getReminderMessage(
     return createBody("Reminder:", baseTrip);
   }
 
-  const nominal = stageLabels[stage] || getHoursLeft(eventDate, new Date());
+  let nominal = stageLabels[stage];
+  
+  // Handle dynamic minute stages like "13_minutes"
+  if (!nominal) {
+    const minuteMatch = stage.match(/^(\d+)_minutes$/);
+    if (minuteMatch) {
+      nominal = `${minuteMatch[1]} minutes`;
+    } else {
+      nominal = getHoursLeft(eventDate, new Date());
+    }
+  }
 
   if (event.type === "Deadline") {
     const base = `Reminder: You have a deadline on ${dateLabel}. You have ${nominal} left before the deadline.`;
