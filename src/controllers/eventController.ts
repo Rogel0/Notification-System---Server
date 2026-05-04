@@ -152,7 +152,11 @@ export async function addEvent(req: Request, res: Response) {
   }).format(parseStoredDate(newEvent.datetime));
 
   res.status(201).json({
-    event: { ...newEvent, datetime: newEvent.datetime, datetime_label: createdLabel },
+    event: {
+      ...newEvent,
+      datetime: newEvent.datetime,
+      datetime_label: createdLabel,
+    },
     notificationStatus,
   });
 }
