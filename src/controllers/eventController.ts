@@ -13,8 +13,52 @@ import {
 import { findUserById } from "../models/userModel";
 import notification, { NotificationResult } from "../utils/notification";
 
+const scheduleWindows = [
+  { stage: "3_days_before", offsetMillis: 1000 * 60 * 60 * 24 * 3 },
+  { stage: "24_hours_before", offsetMillis: 1000 * 60 * 60 * 24 },
+  { stage: "3_hours_before", offsetMillis: 1000 * 60 * 60 * 3 },
+  { stage: "1_hour_before", offsetMillis: 1000 * 60 * 60 },
+  { stage: "15_minutes_before", offsetMillis: 1000 * 60 * 15 },
+  { stage: "exact", offsetMillis: 0 },
+];
+
+const missedWindows = [
+  { stage: "missed_10_minutes", offsetMillis: 1000 * 60 * 10 },
+  { stage: "missed_1_hour", offsetMillis: 1000 * 60 * 60 },
+  { stage: "missed_24_hours", offsetMillis: 1000 * 60 * 60 * 24 },
+];
+
 function getStatus(datetime: string): "upcoming" | "missed" {
   return new Date(datetime).getTime() <= Date.now() ? "missed" : "upcoming";
+}
+
+function getNextReminderStage(datetime: string): string {
+  const eventDate = parseStoredDate(datetime);
+  const now = new Date();
+  const nowMillis = now.getTime();
+  const eventMillis = eventDate.getTime();
+
+  if (eventMillis > nowMillis) {
+    // Upcoming: find the most recent stage that has passed
+    let closestStage = "3_days_before";
+    for (const win of scheduleWindows) {
+      const trigger = eventMillis - win.offsetMillis;
+      if (nowMillis >= trigger && trigger < eventMillis) {
+        closestStage = win.stage;
+      }
+    }
+    return closestStage;
+  } else {
+    // Missed: find the first missed window we're in
+    for (const win of missedWindows) {
+      const trigger = eventMillis + win.offsetMillis;
+      const windowEnd = trigger + 1000 * 60; // 1-minute window
+      if (nowMillis >= trigger && nowMillis < windowEnd) {
+        return win.stage;
+      }
+    }
+    return "missed_24_hours";
+  }
 }
 
 export async function listEvents(req: Request, res: Response) {
@@ -33,11 +77,13 @@ export async function listEvents(req: Request, res: Response) {
       timeStyle: "short",
       timeZone: "Asia/Manila",
     }).format(parsed);
+    const nextStage = getNextReminderStage(event.datetime);
     return {
       ...event,
       status: computedStatus,
       datetime: normalizedDatetime,
       datetime_label: datetimeLabel,
+      next_stage: nextStage,
     };
   });
 
@@ -150,12 +196,14 @@ export async function addEvent(req: Request, res: Response) {
     timeStyle: "short",
     timeZone: "Asia/Manila",
   }).format(parseStoredDate(newEvent.datetime));
+  const createdNextStage = getNextReminderStage(newEvent.datetime);
 
   res.status(201).json({
     event: {
       ...newEvent,
       datetime: newEvent.datetime,
       datetime_label: createdLabel,
+      next_stage: createdNextStage,
     },
     notificationStatus,
   });
@@ -168,6 +216,7 @@ export async function getEvent(req: Request, res: Response) {
   if (!event) return res.status(404).json({ message: "Event not found" });
   // normalize datetime
   const parsed = parseStoredDate(event.datetime);
+  const nextStage = getNextReminderStage(event.datetime);
   const normalized = {
     ...event,
     datetime: parsed.toISOString(),
@@ -176,6 +225,7 @@ export async function getEvent(req: Request, res: Response) {
       timeStyle: "short",
       timeZone: "Asia/Manila",
     }).format(parsed),
+    next_stage: nextStage,
   };
   res.json({ event: normalized });
 }
