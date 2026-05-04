@@ -86,7 +86,7 @@ export async function register(req: Request, res: Response) {
     if (!discordId && !discordTagForDB && !discordUsernameForDB) {
       return res.status(400).json({
         message:
-          "Discord input must be a numeric Discord ID (17-20 digits), username1234 (preferred), or username#1234",
+          "Discord input must be a numeric Discord ID (17-20 digits), a Discord username, or legacy username#1234",
       });
     }
   }
@@ -259,7 +259,7 @@ export async function updateProfile(req: Request, res: Response) {
         if (!discordId && !discordTagForDB && !discordUsernameForDB) {
           return res.status(400).json({
             message:
-              "Discord input must be a numeric Discord ID (17-20 digits), username1234 (preferred), or username#1234",
+              "Discord input must be a numeric Discord ID (17-20 digits), a Discord username, or legacy username#1234",
           });
         }
 

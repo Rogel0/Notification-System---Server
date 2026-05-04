@@ -16,6 +16,16 @@ export function normalizeDiscordInput(
     };
   }
 
+  // Discord user mention forms like <@123...> or <@!123...>
+  const mentionMatch = raw.match(/^<@!?(\d{17,20})>$/);
+  if (mentionMatch) {
+    return {
+      discordId: mentionMatch[1],
+      discordTag: null,
+      discordUsername: null,
+    };
+  }
+
   // Full discord snowflake ID (usually 17-20 digits)
   if (/^\d{17,20}$/.test(raw)) {
     return {
@@ -54,21 +64,9 @@ export function normalizeDiscordInput(
     }
   }
 
-  // Plain username + 4 digits (e.g. 0026204 => 002#6204 or unnamed6204 => unnamed#6204)
-  const match = raw.match(/^(.+?)(\d{4})$/);
-  if (match) {
-    const usernamePart = match[1].trim().replace(/\s+/g, "");
-    const discriminatorPart = match[2];
-    if (usernamePart && usernamePart.length <= 32) {
-      return {
-        discordId: null,
-        discordTag: discriminatorPart,
-        discordUsername: usernamePart,
-      };
-    }
-  }
-
-  // Plain username-only (no discriminator) fallback: persist username
+  // Plain username-only input should stay intact.
+  // This supports modern Discord usernames like `juneee2401` that do not use
+  // the legacy `name#1234` discriminator format.
   const usernameOnly = raw.trim().replace(/\s+/g, "");
   if (usernameOnly && usernameOnly.length <= 32) {
     return {
