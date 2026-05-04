@@ -26,8 +26,19 @@ export async function listEvents(req: Request, res: Response) {
       event.status === "completed" ? "completed" : getStatus(event.datetime);
     // Normalize datetime to an explicit ISO string (UTC) for the client to avoid
     // timezone-parsing mismatches between browser and server.
-    const normalizedDatetime = parseStoredDate(event.datetime).toISOString();
-    return { ...event, status: computedStatus, datetime: normalizedDatetime };
+    const parsed = parseStoredDate(event.datetime);
+    const normalizedDatetime = parsed.toISOString();
+    const datetimeLabel = new Intl.DateTimeFormat("en-US", {
+      dateStyle: "medium",
+      timeStyle: "short",
+      timeZone: "Asia/Manila",
+    }).format(parsed);
+    return {
+      ...event,
+      status: computedStatus,
+      datetime: normalizedDatetime,
+      datetime_label: datetimeLabel,
+    };
   });
 
   await Promise.all(
@@ -133,7 +144,17 @@ export async function addEvent(req: Request, res: Response) {
     };
   }
 
-  res.status(201).json({ event: newEvent, notificationStatus });
+  // Attach a Manila-friendly label so clients (dashboards) can render consistent times
+  const createdLabel = new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Manila",
+  }).format(parseStoredDate(newEvent.datetime));
+
+  res.status(201).json({
+    event: { ...newEvent, datetime: newEvent.datetime, datetime_label: createdLabel },
+    notificationStatus,
+  });
 }
 
 export async function getEvent(req: Request, res: Response) {
@@ -142,9 +163,15 @@ export async function getEvent(req: Request, res: Response) {
   const event = await getEventById(eventId, userId);
   if (!event) return res.status(404).json({ message: "Event not found" });
   // normalize datetime
+  const parsed = parseStoredDate(event.datetime);
   const normalized = {
     ...event,
-    datetime: parseStoredDate(event.datetime).toISOString(),
+    datetime: parsed.toISOString(),
+    datetime_label: new Intl.DateTimeFormat("en-US", {
+      dateStyle: "medium",
+      timeStyle: "short",
+      timeZone: "Asia/Manila",
+    }).format(parsed),
   };
   res.json({ event: normalized });
 }
