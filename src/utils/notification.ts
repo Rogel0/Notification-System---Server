@@ -362,8 +362,40 @@ export async function resolveDiscordRecipientId(
 
 export function buildDiscordEventPayload(
   event: any,
-  opts?: { status?: string; description?: string },
+  opts?: { status?: string; description?: string; stage?: string },
 ) {
+  const getTimingField = () => {
+    const stage = opts?.stage || "";
+    const stageLabels: Record<string, { name: string; value: string }> = {
+      "3_days_before": { name: "Time left", value: "3 days" },
+      "24_hours_before": { name: "Time left", value: "24 hours" },
+      "3_hours_before": { name: "Time left", value: "3 hours" },
+      "15_minutes_before": { name: "Time left", value: "15 minutes" },
+      exact: { name: "Time left", value: "now" },
+      missed_10_minutes: { name: "Missed by", value: "10 minutes" },
+      missed_1_hour: { name: "Missed by", value: "1 hour" },
+      missed_24_hours: { name: "Missed by", value: "24 hours" },
+    };
+
+    if (stageLabels[stage]) {
+      return stageLabels[stage];
+    }
+
+    const hoursLeft = Math.max(
+      0,
+      Math.ceil(
+        (parseStoredDate(event.datetime).getTime() - Date.now()) /
+          (1000 * 60 * 60),
+      ),
+    );
+    return {
+      name: "Time left",
+      value: hoursLeft === 1 ? "1 hour" : `${hoursLeft} hours`,
+    };
+  };
+
+  const timingField = getTimingField();
+
   return {
     embeds: [
       {
@@ -379,16 +411,8 @@ export function buildDiscordEventPayload(
             inline: true,
           },
           {
-            name: "Hours left",
-            value: String(
-              Math.max(
-                0,
-                Math.ceil(
-                  (parseStoredDate(event.datetime).getTime() - Date.now()) /
-                    (1000 * 60 * 60),
-                ),
-              ),
-            ),
+            name: timingField.name,
+            value: timingField.value,
             inline: true,
           },
         ],

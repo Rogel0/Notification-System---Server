@@ -238,7 +238,7 @@ async function sendReminderNotifications(
         targetDiscordId,
         buildDiscordEventPayload(
           { ...event, status: derivedStatus },
-          { status: derivedStatus, description: message.text },
+          { status: derivedStatus, description: message.text, stage },
         ),
       );
     }
