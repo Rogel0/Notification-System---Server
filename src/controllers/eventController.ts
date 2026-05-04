@@ -39,15 +39,28 @@ function getNextReminderStage(datetime: string): string {
   const eventMillis = eventDate.getTime();
 
   if (eventMillis > nowMillis) {
-    // Upcoming: find the most recent stage that has passed
-    let closestStage = "3_days_before";
+    // Upcoming: find the NEXT stage (first stage that hasn't triggered yet)
     for (const win of scheduleWindows) {
       const trigger = eventMillis - win.offsetMillis;
-      if (nowMillis >= trigger && trigger < eventMillis) {
-        closestStage = win.stage;
+      if (nowMillis < trigger) {
+        // This stage hasn't triggered yet, so it's the next one
+        return win.stage;
       }
     }
-    return closestStage;
+
+    // All predefined stages have passed - calculate remaining time dynamically
+    const remainingMs = eventMillis - nowMillis;
+    const remainingMinutes = Math.ceil(remainingMs / (1000 * 60));
+    const remainingHours = Math.ceil(remainingMs / (1000 * 60 * 60));
+    const remainingDays = Math.ceil(remainingMs / (1000 * 60 * 60 * 24));
+
+    if (remainingMinutes <= 1) return "exact";
+    if (remainingMinutes <= 15) return `${remainingMinutes}_minutes`;
+    if (remainingHours <= 1) return "15_minutes_before";
+    if (remainingHours <= 3) return "1_hour_before";
+    if (remainingHours <= 24) return "3_hours_before";
+    if (remainingDays <= 1) return "24_hours_before";
+    return "3_days_before";
   } else {
     // Missed: find the first missed window we're in
     for (const win of missedWindows) {
